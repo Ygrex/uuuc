@@ -1,0 +1,9 @@
+Compiling on GNU OSes:
+make
+
+To test:
+./test
+./test.lua
+
+Both tests have to produce the same result without errors.
+
