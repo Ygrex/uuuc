@@ -1,4 +1,5 @@
-Needs no compiling.
+Wrappers need compiling. See unistring/INSTALL or simply:
+make
 
 To run:
 ./main.lua
