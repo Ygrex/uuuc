@@ -104,6 +104,9 @@ function Getopt:new()
 		url = {func = sql_set,
 			descr = "URL",
 			default=""},
+		group = {func = sql_set,
+			descr = "URL group",
+			default=""},
 		descr = {func = sql_set,
 			descr = "URL description"}
 	}

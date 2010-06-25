@@ -12,11 +12,14 @@ Sql_mt = { __index = Sql };
 -- {{{ Sql:new(VOID) -- constructor
 function Sql:new()
 	local o = {
+		-- {{{ DB tables we use
 		table = "uuuc",
 		groups = "groups",
 		tags = "tags",
+		-- }}} DB tables we use
 		db = "uuuc.sql",
 		url = "",
+		group = "",
 		descr = "",
 		struct = {
 			table = {
@@ -77,12 +80,57 @@ function Sql:add()
 		print("UE:", encode_uri(self.url));
 		return false;
 	end;
-	local s, v = self:split_cols("table", url);
+	url["descr"] = self.descr;
+	if self.group ~= "" then
+		-- URI group specified [by name]
+		self.cur, self.err = self.con:execute(
+			string.format(
+				'SELECT %s FROM %q WHERE `name` LIKE %q',
+				self:implode_cols("groups"),
+				self.groups,
+				self.group
+			)
+		);
+		if not self.cur then return false end;
+		local r = {};
+		local group = self.cur:fetch(r, "a");
+		if not group then
+			-- create a new group
+			self.cur, self.err = self.con:execute(
+				string.format(
+					'INSERT INTO %q (%s) VALUES (%s)',
+					self.groups,
+					self:implode_cols(
+						"groups",
+						{
+						["parent"] = 0,
+						["icon"] = "",
+						["name"] = self.group,
+						["descr"] = ""
+						}
+					)
+				)
+			);
+			if not self.cur then return false end;
+			self.cur, self.err = self.con:execute(
+				string.format(
+					'SELECT MAX(`id`) FROM %q',
+					self.groups
+				)
+			);
+			if not self.cur then return false end;
+			url["group"] = self.cur:fetch();
+		else
+			-- group found
+			url["group"] = r["id"];
+		end;
+	end;
+	local s, v = self:implode_cols("table", url);
 	self.cur, self.err = self.con:execute(
 		string.format(
 			'INSERT INTO %q (%s) VALUES (%s)',
 			self.table,
-			self:split_cols("table", url)
+			self:implode_cols("table", url)
 		)
 	);
 	if not self.cur then return false end;
@@ -105,8 +153,8 @@ function Sql:showdb(...)
 end;
 -- }}} Sql:showdb()
 
--- {{{ Sql:split_cols(table) -- implode quoted col names for the given table
-function Sql:split_cols(table, value)
+-- {{{ Sql:implode_cols(table) -- implode quoted col names for the given table
+function Sql:implode_cols(table, value)
 	local s = "";
 	local v = "";
 	if not value then v = nil end;
@@ -126,7 +174,7 @@ function Sql:split_cols(table, value)
 	end;
 	return s, v;
 end;
--- }}} Sql:split_cols(table)
+-- }}} Sql:implode_cols(table)
 
 -- {{{ Sql:show() -- show table content
 function Sql:show(t)
@@ -137,7 +185,7 @@ function Sql:show(t)
 	self.cur, self.err = self.con:execute(
 		string.format(
 			'SELECT %s FROM %q',
-			self:split_cols(t),
+			self:implode_cols(t),
 			self[t]
 		)
 	);
