@@ -13,9 +13,38 @@ Sql_mt = { __index = Sql };
 function Sql:new()
 	local o = {
 		table = "uuuc",
+		groups = "groups",
+		tags = "tags",
 		db = "uuuc.sql",
 		url = "",
-		descr = ""
+		descr = "",
+		struct = {
+			table = {
+				["id"] = "INTEGER",
+				["group"] = "INTEGER",
+				["icon"] = "VARCHAR(256)",
+				["scheme"] = "VARCHAR(256)",
+				["delim"] = "VARCHAR(256)",
+				["userinfo"] = "VARCHAR(1024)",
+				["regname"] = "VARCHAR(256)",
+				["path"] = "VARCHAR(4096)",
+				["query"] = "VARCHAR(4096)",
+				["fragment"] = "VARCHAR(4096)",
+				["descr"] = "VARCHAR(65536)"
+				},
+			groups = {
+				["id"] = "INTEGER",
+				["parent"] = "INTEGER",
+				["icon"] = "VARCHAR(256)",
+				["name"] = "VARCHAR(65536)",
+				["descr"] = "VARCHAR(65536)"
+				},
+			tags = {
+				["id"] = "INTEGER",
+				["alias"] = "INTEGER",
+				["name"] = "VARCHAR(65536)"
+				}
+		}
 	};
 	setmetatable(o, Sql_mt);
 	o.env = luasql.sqlite3();
@@ -48,73 +77,15 @@ function Sql:add()
 		print("UE:", encode_uri(self.url));
 		return false;
 	end;
-	for k, v in pairs(url) do print(k, v) end;
-	error("not implemented yet");
-	-- {{{ parse URL
-	local s, e = string.find(self.url, "^%a[%a%d+.-]*:");
-	local scheme, rest;
-	if not s then
-		scheme = "http";
-		rest = self.url;
-	else
-		scheme = string.sub(self.url, 1, e - 1);
-		rest = string.sub(self.url, e + 1);
-	end;
-	local delim = false;
-	if string.sub(rest, 1, 2) == "//" then
-		rest = rest:sub(3);
-		delim = true;
-	end;
-	local sub_delims = "$&'()*+,;=!";
-	local unreserved = "%w._~-";
-	local pct_encoded = "\%%x";
-	s, e = string.find(
-		rest,
-		"^[:" ..
-			sub_delims ..
-			pct_encoded ..
-			unreserved ..
-		"]+@");
-	local userinfo;
-	if not s then
-		userinfo = "";
-	else
-		userinfo = string.sub(rest, 1, e - 1);
-		rest = string.sub(rest, e + 1);
-	end;
-	local domaintypes = 0;
-	local domaintype = "";
-	s, e = string.find(
-		rest,
-		"%d+\.%d+\.%d+\.%d+"
-		);
-	if s then
-		domain = rest:sub(1, e);
-		rest = rest:sub(e + 1);
-		-- IPv4
-		domaintype = 1;
-	else
-		s, e = string.find(
-			rest,
-			"^[" ..
-			sub_delims ..
-			pct_encoded ..
-			unreserved ..
-			"]+"
-		);
-		if s then
-		else
-			s, e = string.find(
-			rest,
-			"[%x:]+"
-			);
-		end;		
-	end;
-	print("scheme: " .. scheme);
-	print("userinfo: ", userinfo);
-	print("rest: " .. rest);
-	-- }}} parse URL
-	error("not implemented yet");
+	local s, v = self:split_cols("table", url);
+	self.cur, self.err = self.con:execute(
+		string.format(
+			'INSERT INTO %q (%s) VALUES (%s)',
+			self.table,
+			self:split_cols("table", url)
+		)
+	);
+	if not self.cur then return false end;
 	return true;
 end;
 -- }}} Sql:add()
@@ -134,40 +105,72 @@ function Sql:showdb(...)
 end;
 -- }}} Sql:showdb()
 
+-- {{{ Sql:split_cols(table) -- implode quoted col names for the given table
+function Sql:split_cols(table, value)
+	local s = "";
+	local v = "";
+	if not value then v = nil end;
+	for k in pairs(self.struct[table]) do
+		-- omit autoincremented index when values specified
+		if not ( (k == "id") and (value ~= nil) ) then
+			if s:sub(1, 1) ~= "" then
+				s = s .. ",";
+				if value then v = v .. "," end;
+			end;
+			s = s .. "`" .. k .. "`";
+			if value then
+				if value[k] == nil then value[k] = "" end;
+				v = v .. string.format("%q", value[k]);
+			end;
+		end;
+	end;
+	return s, v;
+end;
+-- }}} Sql:split_cols(table)
+
 -- {{{ Sql:show() -- show table content
-function Sql:show(...)
+function Sql:show(t)
+	if (self[t] == nil) or (type(self[t]) ~= "string") then
+		return false
+	end;
 	if self.con == nil then self:connect() end;
 	self.cur, self.err = self.con:execute(
-		string.format('SELECT * FROM %q', self.table)
+		string.format(
+			'SELECT %s FROM %q',
+			self:split_cols(t),
+			self[t]
+		)
 	);
 	if not self.cur then return false end;
-	local t = {};
-	while self.cur:fetch(t, "a") do print(unpack(t)) end;
+	local r = {};
+	while self.cur:fetch(r, "a") do
+		print(r["id"], implode_uri(r));
+	end;
 	return true;
 end;
 -- }}} Sql:show()
 
--- {{{ Sql:create() -- create table and DB file if not exist
+-- {{{ Sql:create() -- create tables and DB file if not yet
 function Sql:create(...)
-	if string.sub(self.table, 1, 7) == "sqlite_" then
-		self.err = 'Table name cannot begin with "sqlite_"';
-		return false;
+	for _, v in pairs { self.table, self.groups, self.tags } do
+		if string.sub(v, 1, 7) == "sqlite_" then
+			self.err = 'Table name cannot begin with "sqlite_"';
+			return false;
+		end;
 	end;
 	if self.con == nil then self:connect() end;
-	self.cur, self.err = self.con:execute(
-		'CREATE TABLE IF NOT EXISTS ' ..
-		string.format("%q", self.table) ..
-		[[(
-		id INTEGER,
-		icon VARCHAR(256),
-		prot VARCHAR(256),
-		domain VARCHAR(256),
-		res VARCHAR(4096),
-		auth VARCHAR(1024),
-		descr VARCHAR(65536),
-		PRIMARY KEY (id AUTOINCREMENT)
-		)]]
-	);
+	local s;
+	for k, v in pairs(self.struct) do
+		s = string.format(
+			"CREATE TABLE IF NOT EXISTS %q (",
+			self[k]
+		);
+		for i, j in pairs(v) do
+			s = s .. "`" .. i .. "` " .. j .. ",";
+		end;
+		s = s .. 'PRIMARY KEY (`id` AUTOINCREMENT) )';
+		self.cur, self.err = self.con:execute(s);
+	end;
 	return self.cur ~= nil;
 end;
 -- }}} Sql:create()

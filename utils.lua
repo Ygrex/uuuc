@@ -100,16 +100,27 @@ function parse_uri(uri)
 		"(:(?<port>[0-9]+))?" ..
 		"(?<path>/[" .. pchar .. "][/" .. pchar .. "]*)?" ..
 		"(\\?(?<query>[/?" .. pchar .. "]+))?" ..
-		"(#(?<fragment>[/?" .. pchar .. "]+))" ..
+		"(#(?<fragment>[/?" .. pchar .. "]+))?" ..
 		"$");
 	local ret = {re:exec(uri)};
 	local l = #ret;
-	if l > 0 then return ret[l] end;
+	if l > 0 then
+		for k, v in pairs(ret[l]) do
+			if not v then ret[l][k] = "" end;
+		end;
+		return ret[l];
+	end;
 	ret = { re:exec(encode_uri(uri)) };
 	local l = #ret;
 	if l < 1 then return nil end;
 	ret = ret[l];
-	for k, v in pairs(ret) do ret[k] = decode_uri(v) end;
+	for k, v in pairs(ret) do
+		if not v then
+			ret[k] = "";
+		else
+			ret[k] = decode_uri(v);
+		end;
+	end;
 	return ret;
 end;
 -- }}} parse_uri(uri)
@@ -153,5 +164,29 @@ function decode_uri(uri)
 	end;
 end;
 -- }}} decode_uri(uri)
+
+-- {{{ implode_uri(uri) -- return full URI-string from the specified table
+function implode_uri(uri)
+	for k, v in pairs(uri) do
+		if (v == "") or not v then uri[k] = nil end;
+	end;
+	if not uri["regname"] then return false end;
+	local s = "";
+	if uri["scheme"] then
+		s = uri["scheme"] .. ":";
+		if uri["delim"] then
+			s = s .. uri["delim"];
+		end;
+	end;
+	if uri["userinfo"] then
+		s = s .. uri["userinfo"] .. "@";
+	end;
+	s = s .. uri["regname"];
+	if uri["path"] then s = s .. uri["path"] end;
+	if uri["query"] then s = s .. "?" .. uri["query"] end;
+	if uri["fragment"] then s = s .. "#" .. uri["fragment"] end;
+	return s;
+end;
+-- }}} implode_uri(uri)
 
 -- vim: set foldmethod=marker:

@@ -17,7 +17,11 @@ function Act:new(parent)
 			prin = 12 },
 		showdb = { func = function() return parent.sql:showdb() end,
 			pri = 8 },
-		show = { func = function() return parent.sql:show() end,
+		show = { func = function()
+				return parent.sql:show("table") end,
+			pri = 8 },
+		showgroups = { func = function()
+				return parent.sql:show("groups") end,
 			pri = 8 },
 		help = { func = function() return parent:help() end,
 			pri = 0 },
@@ -69,12 +73,11 @@ function Getopt:new()
 		return function(c, b) o.sql:set(a, b) end;
 	end;
 	o.entries = {
---		help = { func = function (a, b) o:help() end,
---			descr = "show this help"},
 		help = { func = act_set,
 			descr = "show this help"},
 		show = {func = act_set,
-			descr = "show a table content"},
+			descr = "show a table content",
+			default = o.sql.table},
 		showdb = {func = act_set,
 			descr = "display available tables within DB"},
 		create = {func = act_setd("new"),
@@ -83,6 +86,12 @@ function Getopt:new()
 			descr = "create table and DB file if not exist"},
 		add = {func = act_set,
 			descr = "add entry to the DB"},
+		groups = {func = sql_set,
+			descr = "name of table with groups",
+			default = o.sql.groups},
+		tags = {func = sql_set,
+			descr = "name of table with tags",
+			default = o.sql.tags},
 		table = {func = sql_set,
 			descr = "table name to read from file",
 			default = o.sql.table},
