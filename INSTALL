@@ -13,10 +13,13 @@ LuaSQL with SQLite3 backend:
 	http://www.luaforge.net/projects/luasql
 Unicode string C library:
 	http://www.gnu.org/software/libunistring/
+XdgUtils:
+	http://portland.freedesktop.org/
 
 To satisfy all dependencies on Debian:
 aptitude install liblua5.1-gnome-0
 aptitude install liblua5.1-rex-pcre0
 aptitude install liblua5.1-sql-sqlite3-dev
 aptitude install libunistring-dev
+aptitude install xdg-utils
 

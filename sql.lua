@@ -13,16 +13,17 @@ Sql_mt = { __index = Sql };
 function Sql:new()
 	local o = {
 		-- {{{ DB tables we use
-		table = "uuuc",
+		urls = "uuuc",
 		groups = "groups",
 		tags = "tags",
 		-- }}} DB tables we use
 		db = "uuuc.sql",
+		table = "uuuc",
 		url = "",
 		group = "",
 		descr = "",
 		struct = {
-			table = {
+			urls = {
 				["id"] = "INTEGER",
 				["group"] = "INTEGER",
 				["icon"] = "VARCHAR(256)",
@@ -125,12 +126,12 @@ function Sql:add()
 			url["group"] = r["id"];
 		end;
 	end;
-	local s, v = self:implode_cols("table", url);
+	local s, v = self:implode_cols("urls", url);
 	self.cur, self.err = self.con:execute(
 		string.format(
 			'INSERT INTO %q (%s) VALUES (%s)',
-			self.table,
-			self:implode_cols("table", url)
+			self.urls,
+			self:implode_cols("urls", url)
 		)
 	);
 	if not self.cur then return false end;
@@ -177,22 +178,67 @@ end;
 -- }}} Sql:implode_cols(table)
 
 -- {{{ Sql:show() -- show table content
-function Sql:show(t)
-	if (self[t] == nil) or (type(self[t]) ~= "string") then
-		return false
-	end;
+function Sql:show()
+	local t = self.table;
+	if
+		(self.urls ~= t) and
+		(self.groups ~= t) and
+		(self.tags ~= t)
+		then return false end;
 	if self.con == nil then self:connect() end;
-	self.cur, self.err = self.con:execute(
-		string.format(
+	local s;
+	if (t == self.urls) then
+		local urls = string.format('%q', self.urls);
+		local groups = string.format('%q', self.groups);
+		s = 'SELECT ' ..
+			urls .. '.`id`,' ..
+			groups .. '.`name`,' ..
+			urls .. '.`scheme`,' ..
+			urls .. '.`delim`,' ..
+			urls .. '.`userinfo`,' ..
+			urls .. '.`regname`,' ..
+			urls .. '.`path`,' ..
+			urls .. '.`query`,' ..
+			urls .. '.`fragment`,' ..
+			urls .. '.`descr`' ..
+			' FROM ' ..
+			urls ..
+			' LEFT JOIN ' ..
+			groups ..
+			' ON ' ..
+			urls .. '.`group`' ..
+			' = ' ..
+			groups .. '.`id`';
+		if #self.group > 0 then
+			s = s .. ' WHERE ' ..
+				groups .. '.`name` LIKE ' ..
+				string.format("%q", self.group);
+		end;
+	else
+		s = string.format(
 			'SELECT %s FROM %q',
 			self:implode_cols(t),
 			self[t]
-		)
-	);
+		);
+	end;
+	self.cur, self.err = self.con:execute(s);
 	if not self.cur then return false end;
 	local r = {};
 	while self.cur:fetch(r, "a") do
-		print(r["id"], implode_uri(r));
+		if t == self.urls then
+			s = '"' .. r["name"] .. '"\t' .. implode_uri(r);
+		elseif t == self.groups then
+			s = r["parent"] ..
+				'\t"' ..
+				r["name"] ..
+				'"\t"' ..
+				r["descr"] .. '"';
+		else
+			s = r["alias"] ..
+				'\t"' ..
+				r["name"] .. '"';
+		end;
+		print(r["id"], s);
 	end;
 	return true;
 end;

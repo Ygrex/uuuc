@@ -96,7 +96,7 @@ function parse_uri(uri)
 					unreserved ..
 				"]+" ..
 			")" ..
-		")" ..
+		")?" ..
 		"(:(?<port>[0-9]+))?" ..
 		"(?<path>/[" .. pchar .. "][/" .. pchar .. "]*)?" ..
 		"(\\?(?<query>[/?" .. pchar .. "]+))?" ..
@@ -170,7 +170,6 @@ function implode_uri(uri)
 	for k, v in pairs(uri) do
 		if (v == "") or not v then uri[k] = nil end;
 	end;
-	if not uri["regname"] then return false end;
 	local s = "";
 	if uri["scheme"] then
 		s = uri["scheme"] .. ":";
@@ -181,7 +180,7 @@ function implode_uri(uri)
 	if uri["userinfo"] then
 		s = s .. uri["userinfo"] .. "@";
 	end;
-	s = s .. uri["regname"];
+	if uri["regname"] then s = s .. uri["regname"] end;
 	if uri["path"] then s = s .. uri["path"] end;
 	if uri["query"] then s = s .. "?" .. uri["query"] end;
 	if uri["fragment"] then s = s .. "#" .. uri["fragment"] end;

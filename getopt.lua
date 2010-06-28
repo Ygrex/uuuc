@@ -11,6 +11,18 @@ Act_mt = { __index = Act };
 function Act:new(parent)
 	local o = {
 		-- {{{ known actions
+		open = { func = function()
+				if not parent.sql.url then return false end;
+				local s = string.format(
+					"%q",
+					parent.sql.url:gsub(
+						"^%s*", ""):gsub(
+						"%s*$", "")
+				);
+				io.popen("xdg-open " .. s, "r");
+				return true;
+			end,
+			pri = 24 },
 		new = { func = function() return parent.sql:create() end,
 			pri = 16 },
 		add = { func = function() return parent.sql:add() end,
@@ -18,10 +30,7 @@ function Act:new(parent)
 		showdb = { func = function() return parent.sql:showdb() end,
 			pri = 8 },
 		show = { func = function()
-				return parent.sql:show("table") end,
-			pri = 8 },
-		showgroups = { func = function()
-				return parent.sql:show("groups") end,
+				return parent.sql:show(parent.sql.urls) end,
 			pri = 8 },
 		help = { func = function() return parent:help() end,
 			pri = 0 },
@@ -35,7 +44,6 @@ end;
 
 -- {{{ Act:set(name) -- queue the action
 function Act:set(name)
-	
 	if self[name].func ~= nil then
 		self[name].checked = true;
 		return true;
@@ -60,6 +68,7 @@ function Getopt:new()
 	o.sql = Sql:new();
 	o.act = Act:new(o);
 	-- {{{ known positional parameters
+	-- {{{ local functions
 	local function act_set(a, b)
 		o.act:set(a)
 	end;
@@ -72,18 +81,20 @@ function Getopt:new()
 	local function sql_setd(a, b)
 		return function(c, b) o.sql:set(a, b) end;
 	end;
+	-- }}} local functions
 	o.entries = {
 		help = { func = act_set,
 			descr = "show this help"},
 		show = {func = act_set,
-			descr = "show a table content",
-			default = o.sql.table},
+			descr = "show a table content"},
 		showdb = {func = act_set,
 			descr = "display available tables within DB"},
 		create = {func = act_setd("new"),
 			descr = "create table and DB file if not exist"},
 		new = {func = act_set,
 			descr = "create table and DB file if not exist"},
+		open = {func = act_set,
+			descr = "open URL"},
 		add = {func = act_set,
 			descr = "add entry to the DB"},
 		groups = {func = sql_set,
@@ -92,8 +103,11 @@ function Getopt:new()
 		tags = {func = sql_set,
 			descr = "name of table with tags",
 			default = o.sql.tags},
+		urls = {func = sql_set,
+			descr = "name of table with URLs",
+			default = o.sql.tags},
 		table = {func = sql_set,
-			descr = "table name to read from file",
+			descr = "name of table to read",
 			default = o.sql.table},
 		db = {func = sql_set,
 			descr = "DB file to open",
