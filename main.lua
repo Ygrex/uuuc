@@ -2,18 +2,20 @@
 
 gnome_debug_flags = {"trace", "memory"};
 
-require "gtk";
 require "rex_pcre";
 
 -- includes
-dofile "getopt.lua";
 package.cpath = "./unistring/?.so;" .. package.cpath;
 require "liblua_unistring";
+dofile "getopt.lua";
+dofile "guuc.lua";
 
 main = function()
 	-- parse command line parameters
-	getopt = Getopt:new();
+	local getopt = Getopt:new();
 	getopt:main(arg);
+	local guuc = Guuc:new(getopt.sql);
+	guuc:main();
 end;
 
 main();

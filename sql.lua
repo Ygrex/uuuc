@@ -177,6 +177,15 @@ function Sql:implode_cols(table, value)
 end;
 -- }}} Sql:implode_cols(table)
 
+-- {{{ Sql:query()
+function Sql:query(s)
+	if self.con == nil then self:connect() end;
+	self.cur, self.err = self.con:execute(s);
+	if self.cur then return self.cur end;
+	return false;
+end;
+-- }}} Sql:query()
+
 -- {{{ Sql:show() -- show table content
 function Sql:show()
 	local t = self.table;
