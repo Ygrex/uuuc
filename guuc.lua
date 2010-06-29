@@ -28,6 +28,28 @@ end;
 function Guuc:update_tree()
 	-- gtk
 	local tree = self.builder:get_object("treeUrl");
+	tree:add_events(gdk.BUTTON_PRESS_MASK);
+	tree:connect(
+		'button_press_event',
+		function(tree, event)
+			if (event["button"].button == 1) and
+				(event["type"] == gdk.GDK_2BUTTON_PRESS)
+				then
+				local model, iter;
+				tree:get_selection():selected_foreach(
+					function(model, path, iter, data)
+						io.popen(string.format(
+							"xdg-open %q",
+							model:get_value(
+								iter,
+								2
+							)
+						), "r");
+					end, nil
+				);
+			end;
+		end
+	);
 	local model = tree:get_model();
 	local iter = gtk.new("TreeIter");
 	model:clear();
