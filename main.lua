@@ -15,7 +15,7 @@ main = function()
 	local getopt = Getopt:new();
 	getopt:main(arg);
 	local guuc = Guuc:new(getopt.sql);
-	guuc:main();
+	if guuc then guuc:main() end;
 end;
 
 main();

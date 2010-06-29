@@ -34,6 +34,10 @@ function Act:new(parent)
 			pri = 8 },
 		help = { func = function() return parent:help() end,
 			pri = 0 },
+		nogui = { func = function() Guuc.new = function (...)
+				return nil
+			end; return true end,
+			pri = 0}
 		-- }}} known actions
 	};
 	setmetatable(o, Act_mt);
@@ -121,6 +125,8 @@ function Getopt:new()
 		group = {func = sql_set,
 			descr = "URL group",
 			default=""},
+		nogui = {func = act_set,
+			descr = "disable GUI"},
 		descr = {func = sql_set,
 			descr = "URL description"}
 	}
