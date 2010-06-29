@@ -28,66 +28,111 @@ end;
 function Guuc:update_tree()
 	-- gtk
 	local tree = self.builder:get_object("treeUrl");
-	tree:add_events(gdk.BUTTON_PRESS_MASK);
-	tree:connect(
-		'button_press_event',
-		function(tree, event)
-			if (event["button"].button == 1) and
-				(event["type"] == gdk.GDK_2BUTTON_PRESS)
-				then
-				local model, iter;
-				tree:get_selection():selected_foreach(
-					function(model, path, iter, data)
-						io.popen(string.format(
-							"xdg-open %q",
-							model:get_value(
-								iter,
-								2
-							)
-						), "r");
-					end, nil
-				);
-			end;
-		end
-	);
-	local model = tree:get_model();
-	local iter = gtk.new("TreeIter");
-	model:clear();
 	-- sql
 	local urls = string.format('%q', self.sql.urls);
 	local groups = string.format('%q', self.sql.groups);
-	s = 'SELECT ' ..
-		urls .. '.`id`,' ..
-		groups .. '.`name`,' ..
-		urls .. '.`scheme`,' ..
-		urls .. '.`delim`,' ..
-		urls .. '.`userinfo`,' ..
-		urls .. '.`regname`,' ..
-		urls .. '.`path`,' ..
-		urls .. '.`query`,' ..
-		urls .. '.`fragment`,' ..
-		urls .. '.`descr`' ..
-		' FROM ' ..
-		urls ..
-		' LEFT JOIN ' ..
-		groups ..
-		' ON ' ..
-		urls .. '.`group`' ..
-		' = ' ..
-		groups .. '.`id`';
-	local r = self.sql:query(s);
-	if not r then error(self.sql.err) end;
-	local r = {};
-	-- fullfill
-	while self.sql.cur:fetch(r, "a") do
-		urls = implode_uri(r);
-		model:append(iter, nil);
-		model:set(iter,
-			0, r["name"],
-			1, descr,
-			2, urls,
-			-1);
+	-- {{{ local functions
+	-- {{{ item_click(tree, event)
+	-- callback function on a click inside GtkTreeView
+	local function item_click(tree, event)
+		if (event["button"].button == 1) and
+			(event["type"] == gdk.GDK_2BUTTON_PRESS)
+			then
+			local model, iter;
+			tree:get_selection():selected_foreach(
+				function(model, path, iter, data)
+					local url = model:get_value(
+							iter,
+							2
+						);
+					if #url < 1 then return false end;
+					io.popen(string.format(
+						"xdg-open %q",
+						url
+					), "r");
+				end, nil
+			);
+		elseif (event["button"].button == 3) then
+			return nil;
+		end;
+	end
+	-- }}} item_click(tree, event)
+	-- {{{ deep_iter(id, model, iter)
+	-- add items from group specified by `id` to GtkTreeModel
+	-- under iteration specified by `iter`
+	-- and iterate recursively thru subgroups
+	local function deep_iter(id, model, iter)
+		local s_gr = 'SELECT ' ..
+			groups .. '.`id`,' ..
+			groups .. '.`parent`,' ..
+			groups .. '.`icon`,' ..
+			groups .. '.`name`,' ..
+			groups .. '.`descr`' ..
+			' FROM ' ..
+			groups ..
+			' WHERE ' ..
+			groups .. '.`parent` = ' .. id;
+		local s_url = 'SELECT ' ..
+			urls .. '.`id`,' ..
+			groups .. '.`name`,' ..
+			urls .. '.`scheme`,' ..
+			urls .. '.`delim`,' ..
+			urls .. '.`userinfo`,' ..
+			urls .. '.`regname`,' ..
+			urls .. '.`path`,' ..
+			urls .. '.`query`,' ..
+			urls .. '.`fragment`,' ..
+			urls .. '.`descr`' ..
+			' FROM ' ..
+			urls ..
+			' LEFT JOIN ' ..
+			groups ..
+			' ON ' ..
+			urls .. '.`group`' ..
+			' = ' ..
+			groups .. '.`id`' ..
+			' WHERE ' ..
+			urls .. '.`group`' ..
+			' = ' .. id;
+		-- groups
+		local cur = self.sql:query(s_gr);
+		if not cur then error(self.sql.err) end;
+		local r = {};
+		local subiter = gtk.new("TreeIter");
+		while cur:fetch(r, "a") do
+			model:append(subiter, iter);
+			model:set(subiter,
+				0, r["name"],
+				1, "",
+				2, "",
+				-1
+			);
+			deep_iter(r["id"], model, subiter);
+		end;
+		cur:close();
+		-- URLs
+		cur = self.sql:query(s_url);
+		if not cur then error(self.sql.err) end;
+		while cur:fetch(r, "a") do
+			model:append(subiter, iter);
+			model:set(subiter,
+				0, r["name"],
+				1, r["descr"],
+				2, implode_uri(r),
+				-1
+			);
+		end;
+		cur:close();
 	end;
+	-- }}} deep_iter(id, model, iter)
+	-- }}} local functions
+	tree:add_events(gdk.BUTTON_PRESS_MASK);
+	tree:connect(
+		'button_press_event',
+		item_click
+	);
+	tree:get_model():clear();
+	deep_iter(0, tree:get_model(), nil);
 	tree:insert_column_with_attributes(
 		-1,
 		"group",
@@ -109,6 +154,7 @@ function Guuc:update_tree()
 		"text", 2,
 		nil
 	);
+	tree:expand_all();
 	return true;
 end;
 -- }}} Guuc:update_tree()

@@ -180,9 +180,9 @@ end;
 -- {{{ Sql:query()
 function Sql:query(s)
 	if self.con == nil then self:connect() end;
-	self.cur, self.err = self.con:execute(s);
-	if self.cur then return self.cur end;
-	return false;
+	local cur;
+	cur, self.err = self.con:execute(s);
+	return cur;
 end;
 -- }}} Sql:query()
 

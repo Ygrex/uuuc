@@ -2,6 +2,16 @@
 <interface>
   <requires lib="gtk+" version="2.16"/>
   <!-- interface-naming-policy project-wide -->
+  <object class="GtkTreeStore" id="treestoreUrl">
+    <columns>
+      <!-- column-name group -->
+      <column type="gchararray"/>
+      <!-- column-name name -->
+      <column type="gchararray"/>
+      <!-- column-name url -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkWindow" id="winMain">
     <child>
       <object class="GtkVBox" id="vboxMain">
@@ -69,15 +79,5 @@
         </child>
       </object>
     </child>
-  </object>
-  <object class="GtkTreeStore" id="treestoreUrl">
-    <columns>
-      <!-- column-name group -->
-      <column type="gchararray"/>
-      <!-- column-name name -->
-      <column type="gchararray"/>
-      <!-- column-name url -->
-      <column type="gchararray"/>
-    </columns>
   </object>
 </interface>
