@@ -159,6 +159,27 @@ function Guuc:update_tree()
 end;
 -- }}} Guuc:update_tree()
 
+-- {{{ Guuc:show_url()
+-- show URL info in a right panel
+function Guuc:show_url(btn)
+	local tree = self.builder:get_object("treeUrl");
+	tree:get_selection():selected_foreach(
+		function(model, path, iter, data)
+			local name = model:get_value(iter, 1);
+			local url = model:get_value(iter, 2);
+			local txtName = self.builder:get_object(
+				"txtName"
+			);
+			local txtUrl = self.builder:get_object(
+				"txtUrl"
+			);
+			txtName:set_text(name);
+			txtUrl:set_text(url);
+		end, nil
+	);
+end;
+-- }}} Guuc:show_url()
+
 -- {{{ Guuc:main()
 function Guuc:main()
 	-- winMain
@@ -169,6 +190,11 @@ function Guuc:main()
 	menuQuit:connect("activate", gtk.main_quit);
 	-- show
 	self:update_tree();
+	-- buttons
+	self.builder:get_object("btnRestore"):connect(
+		"pressed",
+		function(btn) self:show_url(btn) end
+	);
 	winMain:show();
 	gtk.main();
 	return true;
