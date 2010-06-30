@@ -125,8 +125,16 @@ function Sql:add()
 			-- group found
 			url["group"] = r["id"];
 		end;
+	else
+		url["group"] = 0;
 	end;
 	local s, v = self:implode_cols("urls", url);
+	print(	string.format(
+			'INSERT INTO %q (%s) VALUES (%s)',
+			self.urls,
+			self:implode_cols("urls", url)
+		)
+	);
 	self.cur, self.err = self.con:execute(
 		string.format(
 			'INSERT INTO %q (%s) VALUES (%s)',
@@ -135,6 +143,10 @@ function Sql:add()
 		)
 	);
 	if not self.cur then return false end;
+	self.err = "";
+	print("-= vvv =-");
+	print("just added");
+	print("-= ^^^ =-");
 	return true;
 end;
 -- }}} Sql:add()
@@ -155,13 +167,18 @@ end;
 -- }}} Sql:showdb()
 
 -- {{{ Sql:implode_cols(table) -- implode quoted col names for the given table
-function Sql:implode_cols(table, value)
+function Sql:implode_cols(table, value, omit)
 	local s = "";
 	local v = "";
 	if not value then v = nil end;
+	if not omit then omit = {} end;
 	for k in pairs(self.struct[table]) do
 		-- omit autoincremented index when values specified
-		if not ( (k == "id") and (value ~= nil) ) then
+		if not (
+			(omit[k] ~= nil)
+			or
+			( (k == "id") and (value ~= nil) )
+		) then
 			if s:sub(1, 1) ~= "" then
 				s = s .. ",";
 				if value then v = v .. "," end;
@@ -298,6 +315,43 @@ function Sql:close()
 	return true;
 end;
 -- }}} Sql:close(VOID)
+
+-- {{{ Sql:update_url(id, name, url, group) -- update URL in DB
+function Sql:update_url(id, name, url, group)
+	if url == "" or url == nil then
+		self.err = "invalid URL";
+		return false;
+	end;
+	if self.con == nil then self:connect() end;
+	local urls = string.format('%q', self.urls);
+	local groups = string.format('%q', self.groups);
+	id = tonumber(id);
+	if not id then self.err = "Invalid Id" ; return false end;
+	group = tonumber(group);
+	if not group then
+		group = "";
+	else
+		group = ",`group` = " .. group;
+	end;
+	local url = parse_uri(url);
+	local s = 'UPDATE ' .. urls ..
+		' SET ' ..
+		string.format('`scheme` = %q,', url["scheme"]) ..
+		string.format('`delim` = %q,', url["delim"]) ..
+		string.format('`userinfo` = %q,', url["userinfo"]) ..
+		string.format('`regname` = %q,', url["regname"]) ..
+		string.format('`path` = %q,', url["path"]) ..
+		string.format('`query` = %q,', url["query"]) ..
+		string.format('`fragment` = %q,', url["fragment"]) ..
+		string.format('`descr` = %q', name) ..
+		group ..
+		' WHERE `id` = ' .. id;
+	self.cur, self.err = self.con:execute(s);
+	if not self.cur then return false end;
+	self.err = "";
+	return true;
+end;
+-- }}} Sql:update_url(id, name, url, group)
 
 -- }}} Sql object
 
