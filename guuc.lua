@@ -38,7 +38,7 @@ function Guuc:init_tree()
 					function(model, path, iter, data)
 						local url = model:get_value(
 								iter,
-								2
+								1
 							);
 						if #url < 1 then
 							return false
@@ -102,19 +102,8 @@ function Guuc:update_tree()
 	-- under iteration specified by `iter`
 	-- and iterate recursively thru subgroups
 	local function deep_iter(id, model, iter)
-		local s_gr = 'SELECT ' ..
-			groups .. '.`id`,' ..
-			groups .. '.`parent`,' ..
-			groups .. '.`icon`,' ..
-			groups .. '.`name`,' ..
-			groups .. '.`descr`' ..
-			' FROM ' ..
-			groups ..
-			' WHERE ' ..
-			groups .. '.`parent` = ' .. id;
 		local s_url = 'SELECT ' ..
 			urls .. '.`id`,' ..
-			groups .. '.`name`,' ..
 			urls .. '.`scheme`,' ..
 			urls .. '.`delim`,' ..
 			urls .. '.`userinfo`,' ..
@@ -125,41 +114,17 @@ function Guuc:update_tree()
 			urls .. '.`descr`' ..
 			' FROM ' ..
 			urls ..
-			' LEFT JOIN ' ..
-			groups ..
-			' ON ' ..
-			urls .. '.`group`' ..
-			' = ' ..
-			groups .. '.`id`' ..
 			' WHERE ' ..
 			urls .. '.`group`' ..
 			' = ' .. id;
 		-- groups
-		local cur = self.sql:query(s_gr);
+		local cur = self.sql:query(s_url);
 		if not cur then error(self.sql.err) end;
 		local r = {};
 		local subiter = gtk.new("TreeIter");
 		while cur:fetch(r, "a") do
 			model:append(subiter, iter);
 			r["id"] = tonumber(r["id"]);
-			if r["id"] == id_g then
-				path = model:get_path(subiter);
-			end;
-			model:set(subiter,
-				0, r["name"],
-				1, "",
-				2, r["id"],
-				-1
-			);
-			deep_iter(r["id"], model, subiter);
-		end;
-		cur:close();
-		-- URLs
-		cur = self.sql:query(s_url);
-		if not cur then error(self.sql.err) end;
-		while cur:fetch(r, "a") do
-			r["id"] = tonumber(r["id"]);
-			model:append(subiter, iter);
 			if (r["id"] == id_url) or self.just_added then
 				path = model:get_path(subiter);
 			end;
@@ -169,6 +134,7 @@ function Guuc:update_tree()
 				2, r["id"],
 				-1
 			);
+			deep_iter(r["id"], model, subiter);
 		end;
 		cur:close();
 	end;
@@ -209,8 +175,8 @@ function Guuc:save_url(btn)
 	local tree = self.builder:get_object("treeUrl");
 	local count = tree:get_selection():count_selected_rows();
 	local function save(model, path, iter, data)
-		if count ~= 1 then return end;
 		count = count - 1;
+		if count > 0 then return end;
 		self.sql:update_url(
 			model:get_value(iter, 2),
 			self.builder:get_object("txtName"):get_text(),
@@ -253,6 +219,40 @@ function Guuc:add_url()
 end;
 -- }}} Guuc:add_url
 
+-- {{{ Guuc:del_url() -- add a new empty URL
+function Guuc:del_url()
+	local tree = self.builder:get_object("treeUrl");
+	local count = tree:get_selection():count_selected_rows();
+	local function delete(model, path, iter, data)
+		count = count - 1;
+		if count > 0 then return end;
+		self.sql.descr = "";
+		self.sql.url = "http://";
+		self.sql.group = "";
+		self.just_added = true;
+		self.sql:query(string.format(
+			'DELETE FROM %q WHERE `id` = %d',
+			self.sql.urls,
+			model:get_value(iter, 2)
+		));
+	end;
+	tree:get_selection():selected_foreach(delete, nil);
+	local stat = self.builder:get_object("statusbarMain");
+	stat:pop(13);
+	if self.sql.err then
+		stat:push(
+			13,
+			string.format(
+				"[%d] SQL:: %s",
+				os.time(),
+				self.sql.err
+			)
+		);
+	end;
+	self:update_tree();
+end;
+-- }}} Guuc:del_url
+
 -- {{{ Guuc:main()
 function Guuc:main()
 	-- winMain
@@ -262,6 +262,10 @@ function Guuc:main()
 	local menuQuit = self.builder:get_object("menuQuit");
 	menuQuit:connect("activate", gtk.main_quit);
 	-- toolbar
+	self.builder:get_object("toolRemove"):connect(
+		"clicked",
+		function(btn) self:del_url() end
+	);
 	self.builder:get_object("toolRefresh"):connect(
 		"clicked",
 		function(btn) self:update_tree() end

@@ -82,52 +82,8 @@ function Sql:add()
 		return false;
 	end;
 	url["descr"] = self.descr;
-	if self.group ~= "" then
-		-- URI group specified [by name]
-		self.cur, self.err = self.con:execute(
-			string.format(
-				'SELECT %s FROM %q WHERE `name` LIKE %q',
-				self:implode_cols("groups"),
-				self.groups,
-				self.group
-			)
-		);
-		if not self.cur then return false end;
-		local r = {};
-		local group = self.cur:fetch(r, "a");
-		if not group then
-			-- create a new group
-			self.cur, self.err = self.con:execute(
-				string.format(
-					'INSERT INTO %q (%s) VALUES (%s)',
-					self.groups,
-					self:implode_cols(
-						"groups",
-						{
-						["parent"] = 0,
-						["icon"] = "",
-						["name"] = self.group,
-						["descr"] = ""
-						}
-					)
-				)
-			);
-			if not self.cur then return false end;
-			self.cur, self.err = self.con:execute(
-				string.format(
-					'SELECT MAX(`id`) FROM %q',
-					self.groups
-				)
-			);
-			if not self.cur then return false end;
-			url["group"] = self.cur:fetch();
-		else
-			-- group found
-			url["group"] = r["id"];
-		end;
-	else
-		url["group"] = 0;
-	end;
+	url["group"] = tonumber(url["group"]);
+	if not url["group"] then url["group"] = 0 end;
 	local s, v = self:implode_cols("urls", url);
 	print(	string.format(
 			'INSERT INTO %q (%s) VALUES (%s)',
@@ -144,9 +100,6 @@ function Sql:add()
 	);
 	if not self.cur then return false end;
 	self.err = "";
-	print("-= vvv =-");
-	print("just added");
-	print("-= ^^^ =-");
 	return true;
 end;
 -- }}} Sql:add()
