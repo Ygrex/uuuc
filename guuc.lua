@@ -253,6 +253,21 @@ function Guuc:del_url()
 end;
 -- }}} Guuc:del_url
 
+-- {{{ Guuc:add_prop() -- add a new property
+function Guuc:add_prop()
+	local tbl = self.builder:get_object("tableProperty");
+	local rows = glib.list_length(tbl:get_children())/3;
+	local txt = gtk.gtk_entry_new();
+	tbl:attach(txt, 0, 1, rows, rows + 1, gtk.GTK_FILL, gtk.GTK_FILL, 0, 0);
+	local txt = gtk.gtk_entry_new();
+	tbl:attach(txt, 1, 2, rows, rows + 1, gtk.GTK_FILL, gtk.GTK_FILL, 0, 0);
+	local txt = gtk.gtk_entry_new();
+	tbl:attach(txt, 2, 3, rows, rows + 1, gtk.GTK_FILL, gtk.GTK_FILL, 0, 0);
+	local win = self.builder:get_object("winMain");
+	win:show_all();
+end;
+-- }}} Guuc:add_prop()
+
 -- {{{ Guuc:main()
 function Guuc:main()
 	-- winMain
@@ -273,6 +288,11 @@ function Guuc:main()
 	self.builder:get_object("toolAdd"):connect(
 		"clicked",
 		function(btn) self:add_url() end
+	);
+	-- properties toolbar
+	self.builder:get_object("toolPropertyAdd"):connect(
+		"clicked",
+		function(btn) self:add_prop() end
 	);
 	-- buttons
 	self.builder:get_object("btnRestore"):connect(
