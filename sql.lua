@@ -82,9 +82,9 @@ function Sql:add()
 	url["group"] = tonumber(url["group"]);
 	if not url["group"] then url["group"] = 0 end;
 	self.cur, self.err = self.con:execute(
+		'INSERT INTO ' .. self:escape(self.urls) ..
 		string.format(
-			'INSERT INTO %q (%s) VALUES (%s)',
-			self.urls,
+			' (%s) VALUES (%s)',
 			self:implode_cols("urls", url)
 		)
 	);
@@ -129,7 +129,7 @@ function Sql:implode_cols(table, value, omit)
 			s = s .. "`" .. k .. "`";
 			if value then
 				if value[k] == nil then value[k] = "" end;
-				v = v .. string.format("%q", value[k]);
+				v = v .. self:escape(value[k]);
 			end;
 		end;
 	end;
@@ -158,8 +158,8 @@ function Sql:show()
 	if self.con == nil then self:connect() end;
 	local s;
 	if (t == self.urls) then
-		local urls = string.format('%q', self.urls);
-		local groups = string.format('%q', self.groups);
+		local urls = self:escape(self.urls);
+		local groups = self:escape(self.groups);
 		s = 'SELECT ' ..
 			urls .. '.`id`,' ..
 			groups .. '.`name`,' ..
@@ -182,14 +182,13 @@ function Sql:show()
 		if #self.group > 0 then
 			s = s .. ' WHERE ' ..
 				groups .. '.`name` LIKE ' ..
-				string.format("%q", self.group);
+				self:escape(self.group);
 		end;
 	else
-		s = string.format(
-			'SELECT %s FROM %q',
-			self:implode_cols(t),
-			self[t]
-		);
+		s = 'SELECT ' ..
+			self:implode_cols(t) ..
+			' FROM ' ..
+			self:escape(self[t]);
 	end;
 	self.cur, self.err = self.con:execute(s);
 	if not self.cur then return false end;
@@ -225,10 +224,9 @@ function Sql:create(...)
 	if self.con == nil then self:connect() end;
 	local s;
 	for k, v in pairs(self.struct) do
-		s = string.format(
-			"CREATE TABLE IF NOT EXISTS %q (",
-			self[k]
-		);
+		s = "CREATE TABLE IF NOT EXISTS " ..
+			self:escape(self[k]) ..
+			" (";
 		for i, j in pairs(v) do
 			s = s .. "`" .. i .. "` " .. j .. ",";
 		end;
@@ -267,8 +265,8 @@ function Sql:update_url(id, name, url, group, prop)
 		return false;
 	end;
 	if self.con == nil then self:connect() end;
-	local urls = string.format('%q', self.urls);
-	local groups = string.format('%q', self.groups);
+	local urls = self:escape(self.urls);
+	local groups = self:escape(self.groups);
 	id = tonumber(id);
 	if not id then self.err = "Invalid Id" ; return false end;
 	group = tonumber(group);
@@ -280,14 +278,14 @@ function Sql:update_url(id, name, url, group, prop)
 	local url = parse_uri(url);
 	local s = 'UPDATE ' .. urls ..
 		' SET ' ..
-		string.format('`scheme` = %q,', url["scheme"]) ..
-		string.format('`delim` = %q,', url["delim"]) ..
-		string.format('`userinfo` = %q,', url["userinfo"]) ..
-		string.format('`regname` = %q,', url["regname"]) ..
-		string.format('`path` = %q,', url["path"]) ..
-		string.format('`query` = %q,', url["query"]) ..
-		string.format('`fragment` = %q,', url["fragment"]) ..
-		string.format('`descr` = %q', name) ..
+		'`scheme` = ' .. self:escape(url["scheme"]) .. ',' ..
+		'`delim` = ' .. self:escape(url["delim"]) .. ',' ..
+		'`userinfo` = ' .. self:escape(url["userinfo"]) .. ',' ..
+		'`regname` = ' .. self:escape(url["regname"]) .. ',' ..
+		'`path` = ' .. self:escape(url["path"]) .. ',' ..
+		'`query` = ' .. self:escape(url["query"]) .. ',' ..
+		'`fragment` = ' .. self:escape(url["fragment"]) .. ',' ..
+		'`descr` = ' .. self:escape(name) ..
 		group ..
 		' WHERE `id` = ' .. id;
 	self.cur, self.err = self.con:execute(s);
@@ -317,6 +315,13 @@ function Sql:update_url(id, name, url, group, prop)
 	return true;
 end;
 -- }}} Sql:update_url(id, name, url, group)
+
+-- {{{ Sql:escape(s) -- escape string for sqlite injection
+function Sql:escape(s)
+	if not s then return '""' end;
+	return '"' .. string.gsub(s, '"', '""') .. '"';
+end;
+-- }}} Sql:escape(s)
 
 -- }}} Sql object
 

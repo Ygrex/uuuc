@@ -96,8 +96,8 @@ function Guuc:update_tree()
 		id_url = nil;
 	end;
 	-- }}} remember selection
-	local urls = string.format('%q', self.sql.urls);
-	local groups = string.format('%q', self.sql.groups);
+	local urls = self.sql:escape(self.sql.urls);
+	local groups = self.sql:escape(self.sql.groups);
 	local path = nil;
 	-- amend orphaned elements
 	self.sql:query('UPDATE ' .. urls ..
@@ -186,7 +186,7 @@ function Guuc:show_url(btn)
 			local s = tonumber(model:get_value(iter, 2));
 			if not s then return end;
 			s = "SELECT `name`, `value` FROM " ..
-				string.format("%q", self.sql.groups) ..
+				self.sql:escape(self.sql.groups) ..
 				" WHERE `url` = " .. s;
 			local cur = self.sql:query(s);
 			local stat = self.builder:get_object("statusbarMain");
@@ -289,13 +289,13 @@ function Guuc:del_url()
 		count = count - 1;
 		if count > 0 then return end;
 		self.sql:query(string.format(
-			'DELETE FROM %q WHERE `url` = %d',
-			self.sql.groups,
+			'DELETE FROM %s WHERE `url` = %d',
+			self.sql:escape(self.sql.groups),
 			model:get_value(iter, 2)
 		));
 		self.sql:query(string.format(
-			'DELETE FROM %q WHERE `id` = %d',
-			self.sql.urls,
+			'DELETE FROM %s WHERE `id` = %d',
+			self.sql:escape(self.sql.urls),
 			model:get_value(iter, 2)
 		));
 	end;
