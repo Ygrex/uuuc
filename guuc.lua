@@ -61,20 +61,22 @@ function Guuc:init_tree()
 		'button_press_event',
 		item_click
 	);
-	tree:insert_column_with_attributes(
-		-1,
+	local c = gtk.tree_view_column_new_with_attributes(
 		"Name",
 		gtk.new("CellRendererText"),
 		"text", 0,
 		nil
 	);
-	tree:insert_column_with_attributes(
-		-1,
+	c:set_resizable(true);
+	tree:append_column(c);
+	c = gtk.tree_view_column_new_with_attributes(
 		"URL",
 		gtk.new("CellRendererText"),
 		"text", 1,
 		nil
 	);
+	c:set_resizable(true);
+	tree:append_column(c);
 end;
 --- }}} Guuc:init_tree()
 
