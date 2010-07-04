@@ -13,6 +13,8 @@
     </columns>
   </object>
   <object class="GtkWindow" id="winMain">
+    <property name="title" translatable="yes">UUUC</property>
+    <property name="icon">alacarte.png</property>
     <child>
       <object class="GtkVBox" id="vboxMain">
         <property name="visible">True</property>
@@ -92,17 +94,26 @@
           </packing>
         </child>
         <child>
-          <object class="GtkHPaned" id="hpaned1">
+          <object class="GtkHPaned" id="hpanedMain">
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <child>
-              <object class="GtkTreeView" id="treeUrl">
+              <object class="GtkScrolledWindow" id="scrwinUrl">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
-                <property name="model">treestoreUrl</property>
-                <property name="search_column">0</property>
-                <property name="enable_grid_lines">vertical</property>
-                <property name="enable_tree_lines">True</property>
+                <property name="hscrollbar_policy">automatic</property>
+                <property name="vscrollbar_policy">automatic</property>
+                <child>
+                  <object class="GtkTreeView" id="treeUrl">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="model">treestoreUrl</property>
+                    <property name="search_column">0</property>
+                    <property name="enable_grid_lines">vertical</property>
+                    <property name="enable_tree_lines">True</property>
+                    <property name="tooltip_column">0</property>
+                  </object>
+                </child>
               </object>
               <packing>
                 <property name="resize">True</property>
@@ -296,7 +307,7 @@
               </object>
               <packing>
                 <property name="resize">True</property>
-                <property name="shrink">True</property>
+                <property name="shrink">False</property>
               </packing>
             </child>
           </object>

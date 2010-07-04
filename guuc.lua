@@ -25,7 +25,7 @@ function Guuc:new(sql)
 end;
 -- }}} Guuc:new()
 
---- {{{ Guuc:init_tree() -- initialize bindings and columns for treeUrl
+-- {{{ Guuc:init_tree() -- initialize bindings and columns for treeUrl
 function Guuc:init_tree()
 	local tree = self.builder:get_object("treeUrl");
 	-- {{{ item_click(tree, event)
@@ -78,7 +78,7 @@ function Guuc:init_tree()
 	c:set_resizable(true);
 	tree:append_column(c);
 end;
---- }}} Guuc:init_tree()
+-- }}} Guuc:init_tree()
 
 -- {{{ Guuc:update_tree() -- refresh treeUrl content
 function Guuc:update_tree()
