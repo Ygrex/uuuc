@@ -97,6 +97,17 @@ function Guuc:update_tree()
 	local urls = string.format('%q', self.sql.urls);
 	local groups = string.format('%q', self.sql.groups);
 	local path = nil;
+	-- amend orphaned elements
+	self.sql:query('UPDATE ' .. urls ..
+		' SET `group` = (' ..
+			'SELECT ' ..
+				'COALESCE(`b`.`id`,0) ' ..
+				'FROM ' .. urls .. ' AS `a` ' ..
+				'LEFT JOIN ' .. urls .. ' AS `b` ' ..
+					'ON `a`.`group` = `b`.`id` ' ..
+				'WHERE `a`.`id` = ' .. urls .. '.`id`' ..
+		') ' ..
+		'WHERE `group` > 0');
 	-- {{{ deep_iter(id, model, iter)
 	-- add items from group specified by `id` to GtkTreeModel
 	-- under iteration specified by `iter`
@@ -155,20 +166,56 @@ end;
 -- {{{ Guuc:show_url() -- show URL info in a right panel
 function Guuc:show_url(btn)
 	local tree = self.builder:get_object("treeUrl");
-	self.builder:get_object("txtName"):set_text("");
-	self.builder:get_object("txtUrl"):set_text("");
-	tree:get_selection():selected_foreach(
+	local txtname = self.builder:get_object("txtName");
+	local txturl = self.builder:get_object("txtUrl");
+	-- clear fields
+	txtname:set_text("");
+	txturl:set_text("");
+	self:flush_prop();
+	-- loop thru selected items
+	local sel = tree:get_selection();
+	local count = sel:count_selected_rows();
+	sel:selected_foreach(
 		function(model, path, iter, data)
-			self.builder:get_object("txtName"):set_text(
-				model:get_value(iter, 0)
+			count = count - 1;
+			if count > 0 then return end;
+			txtname:set_text(model:get_value(iter, 0));
+			txturl:set_text(model:get_value(iter, 1));
+			local s = tonumber(model:get_value(iter, 2));
+			if not s then return end;
+			s = "SELECT `name`, `value` FROM " ..
+				string.format("%q", self.sql.groups) ..
+				" WHERE `url` = " .. s;
+			local cur = self.sql:query(s);
+			local stat = self.builder:get_object("statusbarMain");
+			stat:pop(13);
+			stat:push(
+				13,
+				string.format(
+					"[%d] SQL:: %s",
+					os.time(),
+					self.sql.err
+				)
 			);
-			self.builder:get_object("txtUrl"):set_text(
-				model:get_value(iter, 1)
-			);
+			if not cur then return end;
+			local r = {};
+			while cur:fetch(r, "a") do
+				self:add_prop(r["name"], r["value"]);
+			end;
 		end, nil
 	);
 end;
 -- }}} Guuc:show_url()
+
+-- {{{ Guuc:flush_prop() -- clear the property table
+function Guuc:flush_prop()
+	glib.list_foreach(
+		self.builder:get_object("tableProperty"):get_children(),
+		function (data, udata) data:destroy() end,
+		-1
+	);
+end;
+-- }}} Guuc:flush_prop()
 
 -- {{{ Guuc:save_url() -- saves URL info into
 function Guuc:save_url(btn)
@@ -177,10 +224,23 @@ function Guuc:save_url(btn)
 	local function save(model, path, iter, data)
 		count = count - 1;
 		if count > 0 then return end;
+		local prop = {};
+		glib.list_foreach(
+			self.builder:get_object("tableProperty"):get_children(),
+			function (data, udata)
+				local row = data:get_data("tbl_row").value;
+				local col = data:get_data("tbl_col").value;
+				if not prop[row] then prop[row] = {} end;
+				prop[row][col] = data:get_text();
+			end,
+			-1
+		);
 		self.sql:update_url(
 			model:get_value(iter, 2),
 			self.builder:get_object("txtName"):get_text(),
-			self.builder:get_object("txtUrl"):get_text()
+			self.builder:get_object("txtUrl"):get_text(),
+			nil,
+			prop
 		);
 		local stat = self.builder:get_object("statusbarMain");
 		stat:pop(13);
@@ -219,17 +279,18 @@ function Guuc:add_url()
 end;
 -- }}} Guuc:add_url
 
--- {{{ Guuc:del_url() -- add a new empty URL
+-- {{{ Guuc:del_url() -- delete selected URL
 function Guuc:del_url()
 	local tree = self.builder:get_object("treeUrl");
 	local count = tree:get_selection():count_selected_rows();
 	local function delete(model, path, iter, data)
 		count = count - 1;
 		if count > 0 then return end;
-		self.sql.descr = "";
-		self.sql.url = "http://";
-		self.sql.group = "";
-		self.just_added = true;
+		self.sql:query(string.format(
+			'DELETE FROM %q WHERE `url` = %d',
+			self.sql.groups,
+			model:get_value(iter, 2)
+		));
 		self.sql:query(string.format(
 			'DELETE FROM %q WHERE `id` = %d',
 			self.sql.urls,
@@ -254,17 +315,35 @@ end;
 -- }}} Guuc:del_url
 
 -- {{{ Guuc:add_prop() -- add a new property
-function Guuc:add_prop()
+function Guuc:add_prop(name, value)
 	local tbl = self.builder:get_object("tableProperty");
-	local rows = glib.list_length(tbl:get_children())/3;
-	local txt = gtk.gtk_entry_new();
-	tbl:attach(txt, 0, 1, rows, rows + 1, gtk.GTK_FILL, gtk.GTK_FILL, 0, 0);
-	local txt = gtk.gtk_entry_new();
-	tbl:attach(txt, 1, 2, rows, rows + 1, gtk.GTK_FILL, gtk.GTK_FILL, 0, 0);
-	local txt = gtk.gtk_entry_new();
-	tbl:attach(txt, 2, 3, rows, rows + 1, gtk.GTK_FILL, gtk.GTK_FILL, 0, 0);
-	local win = self.builder:get_object("winMain");
-	win:show_all();
+	local rows = glib.list_length(tbl:get_children())/2;
+	local prop = {
+		{name, gtk.GTK_FILL, gtk.gtk_entry_new},
+		{value, gtk.GTK_FILL + gtk.GTK_EXPAND, gtk.gtk_entry_new}
+	};
+	local elements = {};
+	for k, v in ipairs(prop) do
+	local txt = v[3]();
+	table.insert(elements, txt);
+	txt:set_text(v[1]);
+	tbl:attach(txt,
+		k - 1, k,
+		rows, rows + 1,
+		v[2], gtk.GTK_FILL,
+		0, 0);
+--[[	local function clicked(txt, event, data)
+		if event["type"] == gdk.BUTTON_RELEASE then
+			txt:select_region(0, -1);
+		end;
+	end;
+	txt:connect("event", clicked); --]]
+	txt:set_data("tbl_row", rows + 1);
+	txt:set_data("tbl_col", k);
+--	if k == 1 then txt:grab_focus() end;
+	txt:show();
+	end;
+	return elements;
 end;
 -- }}} Guuc:add_prop()
 
@@ -292,7 +371,10 @@ function Guuc:main()
 	-- properties toolbar
 	self.builder:get_object("toolPropertyAdd"):connect(
 		"clicked",
-		function(btn) self:add_prop() end
+		function(btn)
+			local e = self:add_prop("Attribute", "Value");
+			if e[1] then e[1]:grab_focus() end;
+		end
 	);
 	-- buttons
 	self.builder:get_object("btnRestore"):connect(

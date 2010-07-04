@@ -38,10 +38,9 @@ function Sql:new()
 				},
 			groups = {
 				["id"] = "INTEGER",
-				["parent"] = "INTEGER",
-				["icon"] = "VARCHAR(256)",
+				["url"] = "INTEGER",
 				["name"] = "VARCHAR(65536)",
-				["descr"] = "VARCHAR(65536)"
+				["value"] = "VARCHAR(65536)"
 				},
 			tags = {
 				["id"] = "INTEGER",
@@ -77,20 +76,11 @@ function Sql:add()
 	local url = parse_uri(self.url);
 	if not url then
 		self.err = "Invalid URL";
-		print("AI:", self.url);
-		print("UE:", encode_uri(self.url));
 		return false;
 	end;
 	url["descr"] = self.descr;
 	url["group"] = tonumber(url["group"]);
 	if not url["group"] then url["group"] = 0 end;
-	local s, v = self:implode_cols("urls", url);
-	print(	string.format(
-			'INSERT INTO %q (%s) VALUES (%s)',
-			self.urls,
-			self:implode_cols("urls", url)
-		)
-	);
 	self.cur, self.err = self.con:execute(
 		string.format(
 			'INSERT INTO %q (%s) VALUES (%s)',
@@ -152,6 +142,7 @@ function Sql:query(s)
 	if self.con == nil then self:connect() end;
 	local cur;
 	cur, self.err = self.con:execute(s);
+	if not self.err then self.err = "" end;
 	return cur;
 end;
 -- }}} Sql:query()
@@ -269,8 +260,8 @@ function Sql:close()
 end;
 -- }}} Sql:close(VOID)
 
--- {{{ Sql:update_url(id, name, url, group) -- update URL in DB
-function Sql:update_url(id, name, url, group)
+-- {{{ Sql:update_url(id, name, url, group, prop) -- update URL in DB
+function Sql:update_url(id, name, url, group, prop)
 	if url == "" or url == nil then
 		self.err = "invalid URL";
 		return false;
@@ -301,7 +292,30 @@ function Sql:update_url(id, name, url, group)
 		' WHERE `id` = ' .. id;
 	self.cur, self.err = self.con:execute(s);
 	if not self.cur then return false end;
-	self.err = "";
+	print("---=== vvvvvv ===---");
+	if prop ~= nil then
+		print("prop specified");
+		local s = 'DELETE FROM ' .. groups ..
+			' WHERE `url` = ' .. id;
+		self.cur, self.err = self.con:execute(s);
+		for k, v in ipairs(prop) do
+			s = 'INSERT INTO ' .. groups ..
+				string.format(
+				' (%s) VALUES(%s)',
+				self:implode_cols(
+					"groups",
+					{
+					["url"] = id,
+					["name"] = v[1],
+					["value"] = v[2]
+					}
+				));
+			print(s);
+			self.cur, self.err = self.con:execute(s);
+		end;
+	end;
+	print("---=== ^^^^^^ ===---");
+	if not self.err then self.err = "" end;
 	return true;
 end;
 -- }}} Sql:update_url(id, name, url, group)

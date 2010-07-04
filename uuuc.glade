@@ -9,7 +9,7 @@
       <!-- column-name url -->
       <column type="gchararray"/>
       <!-- column-name id -->
-      <column type="gint"/>
+      <column type="gint64"/>
     </columns>
   </object>
   <object class="GtkWindow" id="winMain">
@@ -235,6 +235,15 @@
                         <property name="label" translatable="yes">Add property</property>
                         <property name="use_underline">True</property>
                         <property name="stock_id">gtk-add</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="homogeneous">True</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkSeparatorToolItem" id="toolPropertySep01">
+                        <property name="visible">True</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
