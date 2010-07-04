@@ -107,6 +107,7 @@
                   <object class="GtkTreeView" id="treeUrl">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
+                    <property name="can_default">True</property>
                     <property name="model">treestoreUrl</property>
                     <property name="search_column">0</property>
                     <property name="enable_grid_lines">vertical</property>
@@ -262,10 +263,19 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkTable" id="tableProperty">
+                  <object class="GtkScrolledWindow" id="scrwinProperty">
                     <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="hscrollbar_policy">automatic</property>
+                    <property name="vscrollbar_policy">automatic</property>
                     <child>
-                      <placeholder/>
+                      <object class="GtkTable" id="tableProperty">
+                        <property name="visible">True</property>
+                        <property name="extension_events">all</property>
+                        <child>
+                          <placeholder/>
+                        </child>
+                      </object>
                     </child>
                   </object>
                   <packing>

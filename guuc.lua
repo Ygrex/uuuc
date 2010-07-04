@@ -320,11 +320,13 @@ end;
 function Guuc:add_prop(name, value)
 	local tbl = self.builder:get_object("tableProperty");
 	local rows = glib.list_length(tbl:get_children())/2;
+	tbl:resize(rows + 1, 2);
 	local prop = {
 		{name, gtk.GTK_FILL, gtk.gtk_entry_new},
 		{value, gtk.GTK_FILL + gtk.GTK_EXPAND, gtk.gtk_entry_new}
 	};
 	local elements = {};
+	local view = self.builder:get_object("scrwinProperty");
 	for k, v in ipairs(prop) do
 	local txt = v[3]();
 	table.insert(elements, txt);
@@ -334,15 +336,8 @@ function Guuc:add_prop(name, value)
 		rows, rows + 1,
 		v[2], gtk.GTK_FILL,
 		0, 0);
---[[	local function clicked(txt, event, data)
-		if event["type"] == gdk.BUTTON_RELEASE then
-			txt:select_region(0, -1);
-		end;
-	end;
-	txt:connect("event", clicked); --]]
 	txt:set_data("tbl_row", rows + 1);
 	txt:set_data("tbl_col", k);
---	if k == 1 then txt:grab_focus() end;
 	txt:show();
 	end;
 	return elements;
