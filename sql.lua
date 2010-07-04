@@ -292,29 +292,27 @@ function Sql:update_url(id, name, url, group, prop)
 		' WHERE `id` = ' .. id;
 	self.cur, self.err = self.con:execute(s);
 	if not self.cur then return false end;
-	print("---=== vvvvvv ===---");
 	if prop ~= nil then
-		print("prop specified");
 		local s = 'DELETE FROM ' .. groups ..
 			' WHERE `url` = ' .. id;
 		self.cur, self.err = self.con:execute(s);
 		for k, v in ipairs(prop) do
-			s = 'INSERT INTO ' .. groups ..
-				string.format(
-				' (%s) VALUES(%s)',
-				self:implode_cols(
-					"groups",
-					{
-					["url"] = id,
-					["name"] = v[1],
-					["value"] = v[2]
-					}
-				));
-			print(s);
-			self.cur, self.err = self.con:execute(s);
+			if v[1] ~= "" then
+				s = 'INSERT INTO ' .. groups ..
+					string.format(
+					' (%s) VALUES(%s)',
+					self:implode_cols(
+						"groups",
+						{
+						["url"] = id,
+						["name"] = v[1],
+						["value"] = v[2]
+						}
+					));
+				self.cur, self.err = self.con:execute(s);
+			end;
 		end;
 	end;
-	print("---=== ^^^^^^ ===---");
 	if not self.err then self.err = "" end;
 	return true;
 end;
