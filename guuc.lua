@@ -61,22 +61,47 @@ function Guuc:init_tree()
 		'button_press_event',
 		item_click
 	);
-	local c = gtk.tree_view_column_new_with_attributes(
-		"Name",
-		gtk.new("CellRendererText"),
-		"text", 0,
-		nil
+	for k, v in ipairs {"Name", "URL"} do
+		local c = gtk.tree_view_column_new_with_attributes(
+			v,
+			gtk.new("CellRendererText"),
+			"text", k - 1,
+			nil
+		);
+		c:set_resizable(true);
+		tree:append_column(c);
+	end;
+	-- drag'n'drop implementation
+	tree:get_model():connect("row-deleted",
+		function (model, path, data)
+			if self.updating then return end;
+			local parent = gtk.new("TreeIter");
+			path:up();
+			if model:get_iter(parent, path) then
+				self.row_deleted =
+					model:get_value(parent, 2);
+			else
+				self.row_deleted = -1;
+			end;
+			if self.row_changed then self:move_url() end;
+		end
 	);
-	c:set_resizable(true);
-	tree:append_column(c);
-	c = gtk.tree_view_column_new_with_attributes(
-		"URL",
-		gtk.new("CellRendererText"),
-		"text", 1,
-		nil
+	tree:get_model():connect("row-changed",
+		function (model, path, iter, data)
+			if self.updating then return end;
+			self.row_changed = {
+				id = model:get_value(iter, 2)
+			};
+			path:up();
+			if model:get_iter(iter, path) then
+				self.row_changed.parent =
+					model:get_value(iter, 2);
+			else
+				self.row_changed.parent = -1;
+			end;
+			if self.row_deleted then self:move_url() end;
+		end
 	);
-	c:set_resizable(true);
-	tree:append_column(c);
 end;
 -- }}} Guuc:init_tree()
 
@@ -144,7 +169,7 @@ function Guuc:update_tree()
 			model:set(subiter,
 				0, r["descr"],
 				1, implode_uri(r),
-				2, r["id"],
+				2, gnome.box(r["id"], "gint64"),
 				-1
 			);
 			deep_iter(r["id"], model, subiter);
@@ -153,7 +178,9 @@ function Guuc:update_tree()
 	end;
 	-- }}} deep_iter(id, model, iter)
 	model:clear();
+	self.updating = true;
 	deep_iter(0, model, nil);
+	self.updating = nil;
 	tree:expand_all();
 	if path ~= nil then
 		sel:unselect_all();
@@ -343,6 +370,16 @@ function Guuc:add_prop(name, value)
 	return elements;
 end;
 -- }}} Guuc:add_prop()
+
+function Guuc:move_url()
+	print("-= row changed =-");
+	print("id:", self.row_changed.id);
+	print("parent old:", self.row_deleted);
+	print("parent new:", self.row_changed.parent);
+	print("--- ^^^^^^ ---");
+	self.row_deleted = nil;
+	self.row_changed = nil;
+end;
 
 -- {{{ Guuc:main()
 function Guuc:main()
