@@ -15,11 +15,25 @@ Unicode string C library:
 	http://www.gnu.org/software/libunistring/
 XdgUtils:
 	http://portland.freedesktop.org/
+GNU Wget:
+	http://www.gnu.org/software/wget/
 
 To satisfy all dependencies on Debian:
 aptitude install liblua5.1-gnome-0
 aptitude install liblua5.1-rex-pcre0
 aptitude install liblua5.1-sql-sqlite3-dev
 aptitude install libunistring-dev
-aptitude install xdg-utils
+aptitude install wget
+
+Optional dependencies:
+
+-- to grab web-pages:
+CutyCapt:
+	http://cutycapt.sourceforge.net/
+	(aptitude install cutycapt)
+
+-- to modify thumbs:
+ImageMagick's convert:
+	http://www.imagemagick.org/script/convert.php
+	(aptitude install imagemagick)
 

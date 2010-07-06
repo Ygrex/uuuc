@@ -207,6 +207,8 @@ function Getopt:help(...)
 			)
 		end;
 	end;
+	-- disable GUI
+	self.act.nogui.func();
 	return true;
 end;
 -- }}} Getopt:help(...)
@@ -244,15 +246,11 @@ function Getopt:main(arg)
 			if v then table.insert(acts, v) end;
 		end;
 	end;
-	if #acts < 1 then
-		self.act["help"].func();
-	else
-		for _, i in ipairs(acts) do
-			if not i.func() then
-				print('While executing "' .. i.desc ..
-					'" an error occured\n\t',
-					self.sql.err);
-			end;
+	for _, i in ipairs(acts) do
+		if not i.func() then
+			print('While executing "' .. i.desc ..
+				'" an error occured\n\t',
+				self.sql.err);
 		end;
 	end;
 	return 0;

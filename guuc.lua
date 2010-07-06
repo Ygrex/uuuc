@@ -346,27 +346,28 @@ end;
 
 -- {{{ Guuc:main()
 function Guuc:main()
+	local bld = self.builder;
 	-- winMain
-	local winMain = self.builder:get_object("winMain");
+	local winMain = bld:get_object("winMain");
 	winMain:connect("destroy", gtk.main_quit);
 	-- menuQuit
-	local menuQuit = self.builder:get_object("menuQuit");
+	local menuQuit = bld:get_object("menuQuit");
 	menuQuit:connect("activate", gtk.main_quit);
 	-- toolbar
-	self.builder:get_object("toolRemove"):connect(
+	bld:get_object("toolRemove"):connect(
 		"clicked",
 		function(btn) self:del_url() end
 	);
-	self.builder:get_object("toolRefresh"):connect(
+	bld:get_object("toolRefresh"):connect(
 		"clicked",
 		function(btn) self:update_tree() end
 	);
-	self.builder:get_object("toolAdd"):connect(
+	bld:get_object("toolAdd"):connect(
 		"clicked",
 		function(btn) self:add_url() end
 	);
 	-- properties toolbar
-	self.builder:get_object("toolPropertyAdd"):connect(
+	bld:get_object("toolPropertyAdd"):connect(
 		"clicked",
 		function(btn)
 			local e = self:add_prop("Attribute", "Value");
@@ -374,13 +375,31 @@ function Guuc:main()
 		end
 	);
 	-- buttons
-	self.builder:get_object("btnRestore"):connect(
+	bld:get_object("btnRestore"):connect(
 		"pressed",
 		function(btn) self:show_url(btn) end
 	);
-	self.builder:get_object("btnSave"):connect(
+	bld:get_object("btnSave"):connect(
 		"pressed",
 		function(btn) self:save_url(btn) end
+	);
+	local winFile = bld:get_object("winFile");
+	bld:get_object("btnFile"):connect(
+		"pressed",
+		function (btn) winFile:show() end
+	);
+	bld:get_object("btnFileCancel"):connect(
+		"pressed",
+		function (btn) winFile:hide() end
+	);
+	bld:get_object("btnFileOk"):connect(
+		"pressed",
+		function (btn)
+			bld:get_object("txtUrl"):set_text(
+				winFile:get_uri()
+			);
+			winFile:hide();
+		end
 	);
 	-- display DB content
 	self:update_tree();
