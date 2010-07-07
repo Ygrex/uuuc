@@ -260,7 +260,7 @@ end;
 
 -- {{{ Sql:update_url(id, name, url, group, prop) -- update URL in DB
 function Sql:update_url(id, name, url, group, prop)
-	if url == "" or url == nil then
+	if not url then
 		self.err = "invalid URL";
 		return false;
 	end;

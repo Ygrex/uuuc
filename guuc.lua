@@ -81,7 +81,7 @@ function Guuc:init_tree()
 				self.row_deleted =
 					model:get_value(parent, 2);
 			else
-				self.row_deleted = -1;
+				self.row_deleted = 0;
 			end;
 			if self.row_changed then self:move_url() end;
 		end
@@ -97,7 +97,7 @@ function Guuc:init_tree()
 				self.row_changed.parent =
 					model:get_value(iter, 2);
 			else
-				self.row_changed.parent = -1;
+				self.row_changed.parent = 0;
 			end;
 			if self.row_deleted then self:move_url() end;
 		end
@@ -371,15 +371,18 @@ function Guuc:add_prop(name, value)
 end;
 -- }}} Guuc:add_prop()
 
+-- {{{ Guuc:move_url() -- change parent element of an item
 function Guuc:move_url()
-	print("-= row changed =-");
-	print("id:", self.row_changed.id);
-	print("parent old:", self.row_deleted);
-	print("parent new:", self.row_changed.parent);
-	print("--- ^^^^^^ ---");
+	self.sql:query('UPDATE ' .. self.sql:escape(self.sql.urls) ..
+		' SET `group` = ' ..
+			self.sql:escape(self.row_changed.parent) ..
+		' WHERE `id` = ' ..
+			self.sql:escape(self.row_changed.id)
+		);
 	self.row_deleted = nil;
 	self.row_changed = nil;
 end;
+-- }}} Guuc:move_url()
 
 -- {{{ Guuc:main()
 function Guuc:main()
