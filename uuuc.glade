@@ -14,6 +14,7 @@
   </object>
   <object class="GtkWindow" id="winMain">
     <property name="title" translatable="yes">UUUC</property>
+    <property name="role">organizer</property>
     <property name="icon">alacarte.png</property>
     <child>
       <object class="GtkVBox" id="vboxMain">
@@ -343,6 +344,7 @@
     <property name="border_width">5</property>
     <property name="modal">True</property>
     <property name="type_hint">dialog</property>
+    <property name="transient_for">winMain</property>
     <property name="has_separator">False</property>
     <child internal-child="vbox">
       <object class="GtkVBox" id="dialogFile">

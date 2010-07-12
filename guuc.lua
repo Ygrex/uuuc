@@ -424,6 +424,7 @@ function Guuc:main()
 		function(btn) self:save_url(btn) end
 	);
 	local winFile = bld:get_object("winFile");
+	winFile:connect("delete-event", gtk.widget_hide_on_delete);
 	bld:get_object("btnFile"):connect(
 		"pressed",
 		function (btn) winFile:show() end
