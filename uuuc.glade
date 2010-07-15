@@ -13,6 +13,7 @@
     </columns>
   </object>
   <object class="GtkWindow" id="winMain">
+    <property name="visible">True</property>
     <property name="title" translatable="yes">UUUC</property>
     <property name="role">organizer</property>
     <property name="icon">alacarte.png</property>
@@ -343,6 +344,7 @@
   <object class="GtkFileChooserDialog" id="winFile">
     <property name="border_width">5</property>
     <property name="modal">True</property>
+    <property name="destroy_with_parent">True</property>
     <property name="type_hint">dialog</property>
     <property name="transient_for">winMain</property>
     <property name="has_separator">False</property>

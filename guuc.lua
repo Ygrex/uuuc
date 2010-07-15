@@ -255,12 +255,24 @@ function Guuc:save_url(btn)
 		if count > 0 then return end;
 		local prop = {};
 		glib.list_foreach(
-			self.builder:get_object("tableProperty"):get_children(),
+			self.builder:get_object(
+				"tableProperty"
+			):get_children(),
 			function (data, udata)
 				local row = data:get_data("tbl_row").value;
 				local col = data:get_data("tbl_col").value;
 				if not prop[row] then prop[row] = {} end;
-				prop[row][col] = data:get_text();
+				local t = data:get_type();
+				if t == gtk.entry_get_type() then
+					prop[row][col] = data:get_text();
+				elseif t == gtk.text_view_get_type() then
+					local s = gtk.new("TextIter");
+					local e = gtk.new("TextIter");
+					local tb = data:get_buffer();
+					tb:get_bounds(s, e);
+					prop[row][col] =
+						tb:get_text(s, e, false);
+				end;
 			end,
 			-1
 		);
@@ -350,14 +362,25 @@ function Guuc:add_prop(name, value)
 	tbl:resize(rows + 1, 2);
 	local prop = {
 		{name, gtk.GTK_FILL, gtk.gtk_entry_new},
-		{value, gtk.GTK_FILL + gtk.GTK_EXPAND, gtk.gtk_entry_new}
+		{value, gtk.GTK_FILL + gtk.GTK_EXPAND,
+			function ()
+				return gtk.text_view_new_with_buffer(
+					gtk.text_buffer_new()
+				)
+			end
+		}
 	};
 	local elements = {};
 	local view = self.builder:get_object("scrwinProperty");
 	for k, v in ipairs(prop) do
 	local txt = v[3]();
 	table.insert(elements, txt);
-	txt:set_text(v[1]);
+	local t = txt:get_type();
+	if t == gtk.entry_get_type() then
+		txt:set_text(v[1]);
+	elseif t == gtk.text_view_get_type() then
+		txt:get_buffer():set_text(v[1], -1);
+	end;
 	tbl:attach(txt,
 		k - 1, k,
 		rows, rows + 1,
@@ -445,7 +468,6 @@ function Guuc:main()
 	-- display DB content
 	self:update_tree();
 	self:init_tree();
-	winMain:show();
 	gtk.main();
 	return true;
 end;
