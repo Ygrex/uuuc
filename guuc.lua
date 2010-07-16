@@ -407,6 +407,11 @@ function Guuc:move_url()
 end;
 -- }}} Guuc:move_url()
 
+-- {{{ winProperty
+function Guuc:winProperty_init(bld)
+end;
+-- }}} winProperty
+
 -- {{{ Guuc:main()
 function Guuc:main()
 	local bld = self.builder;
@@ -429,7 +434,8 @@ function Guuc:main()
 		"clicked",
 		function(btn) self:add_url() end
 	);
-	-- properties toolbar
+	-- {{{ properties toolbar
+	--[[
 	bld:get_object("toolPropertyAdd"):connect(
 		"clicked",
 		function(btn)
@@ -437,7 +443,10 @@ function Guuc:main()
 			if e[1] then e[1]:grab_focus() end;
 		end
 	);
-	-- buttons
+	--]]
+	self:winProperty_init(bld);
+	-- }}} properties toolbar
+	-- {{{ control buttons
 	bld:get_object("btnRestore"):connect(
 		"pressed",
 		function(btn) self:show_url(btn) end
@@ -446,6 +455,8 @@ function Guuc:main()
 		"pressed",
 		function(btn) self:save_url(btn) end
 	);
+	-- }}} control buttons
+	-- {{{ file chooser dialog
 	local winFile = bld:get_object("winFile");
 	winFile:connect("delete-event", gtk.widget_hide_on_delete);
 	bld:get_object("btnFile"):connect(
@@ -465,6 +476,11 @@ function Guuc:main()
 			winFile:hide();
 		end
 	);
+	-- }}} file chooser dialog
+	-- {{{ properties dialog
+	local winDialog = bld:get_object("winProperty");
+	winDialog:connect("delete-event", gtk.widget_hide_on_delete);
+	-- }}} properties dialog
 	-- display DB content
 	self:update_tree();
 	self:init_tree();
