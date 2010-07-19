@@ -5,7 +5,7 @@ gnome_debug_flags = {"trace", "memory"};
 require "rex_pcre";
 
 -- includes
-package.cpath = "./unistring/?.so;" .. package.cpath;
+package.cpath = "unistring/?.so;" .. package.cpath;
 require "liblua_unistring";
 dofile "getopt.lua";
 dofile "guuc.lua";
