@@ -1,5 +1,186 @@
 require "gtk";
 
+local Guuc = { _type = "object" };
+local Guuc_mt = { __index = Guuc };
+
+-- {{{ Guuc:new() -- constructor
+function Guuc:new(sql)
+	if not sql then
+		return nil, "Sqlite3 connector must be specified";
+	end;
+	local o = {
+		["sql"] = sql,			-- Sqlite3 connector
+		["glade_file"] = GLADE_FILE,	-- glade file to load
+		["builder"] = "",		-- GTK builder
+		["win"] = "",			-- Url_win
+		["list"] = "",			-- Url_treeUrl
+	};
+	if not o["glade_file"] then
+		return nil, "GLADE_FILE is not specified";
+	end;
+	setmetatable(o, Guuc_mt);
+	o.builder = gtk.builder_new();
+	local r = o.builder:add_from_file(o.glade_file, nil);
+	if r < 1 then
+		return nil, "gtk_builder_add_from_file() failed";
+	end;
+	o.builder:connect_signals_full();
+	local r, e = o:init();
+	if not r then return nil, e end;
+	return o;
+end;
+-- }}} Guuc:new()
+
+-- {{{ Guuc:init() -- initialize widgets
+function Guuc:init()
+	local r, e = self:attach_pop();
+	if not r then return nil, e end;
+	-- work with Url_win
+	local win = self.builder:get_object("Url_win");
+	if not win then return nil, "widget Url_win not found" end;
+	self.win = win;
+	win:connect("destroy", gtk.main_quit);
+	-- check the position of Url_hpanUrl
+	self:align_hpaned();
+	-- work with Url_treeUrl
+	local list = self.builder:get_object("Url_treeUrl");
+	if not list then return nil, "widget Url_treeUrl not found" end;
+	self.list = list;
+	self:init_tree();
+	-- finalize
+	win:show_all();
+	return true;
+end;
+-- }}} Guuc:init
+
+-- {{{ Guuc:attach_pop() -- setup popup menu for Url_treeUrl
+function Guuc:attach_pop()
+	local tree = self.builder:get_object("Url_treeUrl");
+	if not tree then return nil, "widget Url_treeUrl not found" end;
+	local popup = self.builder:get_object("UrlPop_win");
+	if not popup then return nil, "widget UrlPop_win not found" end;
+	self:init_pop();
+	-- popup handler
+	local function show_popup(tree, event)
+		-- treat the right button only
+		if event["button"].button ~= 3 then return false end;
+		gtk.menu_popup(
+			popup,			-- menu
+			nil,		-- parent_menu_shell
+			nil,		-- parent_menu_item
+			nil,		-- func
+			nil,		-- data
+			event["button"].button,	-- button
+			event["button"].time
+		);
+		return true;
+	end;
+	-- listen to the button press event
+	tree:connect('button_press_event', show_popup);
+	return true;
+end;
+-- }}} Guuc:attach_pop
+
+-- {{{ Guuc:init_tree() -- initialize Url_treeUrl
+function Guuc:init_tree()
+	local list = self.list;
+	if not list then return nil, "self.list is undefined" end;
+	-- {{{ init columns
+	local col = gtk.tree_view_column_new_with_attributes(
+		"URI",
+		gtk.new("CellRendererText"),
+		"text", 1,
+		gnome.NIL
+	);
+	col:set_resizable(true);
+	list:append_column(col);
+	-- }}} init columns
+	list:get_selection():set_mode(gtk.SELECTION_SINGLE);
+	return true;
+end;
+-- }}} Guuc:init_tree
+
+-- {{{ Guuc:item_new(id, name, parent) -- add new item to Url_treeUrl
+--	return iterator on success
+function Guuc:item_new(id, name, parent)
+	id = tonumber(id);
+	if not id then return nil, "invalid ID specified" end;
+	local list = self.list;
+	if not list then return nil, "self.list undefined" end;
+	local model = list:get_model();
+	local iter = gtk.new("GtkTreeIter");
+	model:append(iter, parent);
+	model:set_value(iter, 0, id);
+	model:set_value(iter, 1, tostring(name));
+	return iter;
+end;
+-- }}} Guuc:item_new
+
+-- {{{ Guuc:get_selected(GtkTreeView) -- return the selected iterator
+function Guuc:get_selected(list)
+	local sel = list:get_selection();
+	local iter = gtk.new("GtkTreeIter");
+	local r = sel:get_selected(nil, iter);
+	if not r then return nil end;
+	return iter;
+end;
+-- }}} Guuc:get_selected
+
+-- {{{ Guuc:init_pop() -- initialize popup menu for Url_treeUrl
+function Guuc:init_pop()
+	local item_new = self.builder:get_object("UrlPop_new");
+	if not item_new then return nil, "menu item UrlPop_new not found" end;
+	function item_new_clicked(btn) -- create new URI
+		-- {{{ get the parent node
+		local list = self.list;
+		if not list then return false end;
+		local sel = self:get_selected(list);
+		local path;
+		local id = 0;	-- parent ID
+		if sel then
+			local model = list:get_model();
+			if not model then return false end;
+			-- get the parent's ID
+			id = model:get_value(sel, 0);
+			-- iterator will become invalid after item appending,
+			-- store it's path instead
+			path = model:get_path(sel);
+		end;
+		-- }}} get the parent node
+		-- {{{ write the item to the DB
+		local sql = self.sql;
+		if not sql then return false end;
+		-- }}} write the item to the DB
+		-- {{{ display the item on the Url_treeUrl
+		self:item_new(123, "new item №123", sel);
+		if path then
+			-- unfold the parent item
+			list:expand_row(path, false);
+		end;
+		-- }}} display the item on the Url_treeUrl
+		return true;
+	end;
+	item_new:connect('activate', item_new_clicked);
+end;
+-- }}} Guuc:init_pop
+
+-- {{{ Guuc:align_hpaned() -- resize Url_hpanUrl
+function Guuc:align_hpaned()
+	local hpaned = self.builder:get_object("Url_hpanUrl");
+	if not hpaned then return nil, "Url_hpanUrl not found" end;
+	local wi, he = self.win:get_size(0, 0);
+	hpaned:set_position(wi / 2);
+	return true;
+end;
+-- }}} Guuc:align_hpaned
+
+-- {{{ Guuc:loop() -- fall into the gtk.main() loop
+function Guuc:loop()
+	gtk.main();
+end;
+-- }}} Guuc:loop
+
+--[==[
 -- {{{ Guuc object
 
 -- {{{ Guuc properties and metatable
@@ -66,7 +247,7 @@ function Guuc:init_tree()
 			v,
 			gtk.new("CellRendererText"),
 			"text", k - 1,
-			nil
+			gnome.NIL
 		);
 		c:set_resizable(true);
 		tree:append_column(c);
@@ -121,18 +302,16 @@ function Guuc:update_tree()
 		id_url = nil;
 	end;
 	-- }}} remember selection
-	local urls = self.sql:escape(self.sql.urls);
-	local groups = self.sql:escape(self.sql.groups);
 	local path = nil;
 	-- amend orphaned elements
-	self.sql:query('UPDATE ' .. urls ..
+	self.sql:query('UPDATE `urls` ' ..
 		' SET `group` = (' ..
 			'SELECT ' ..
 				'COALESCE(`b`.`id`,0) ' ..
-				'FROM ' .. urls .. ' AS `a` ' ..
-				'LEFT JOIN ' .. urls .. ' AS `b` ' ..
+				'FROM `urls` AS `a` ' ..
+				'LEFT JOIN `urls` AS `b` ' ..
 					'ON `a`.`group` = `b`.`id` ' ..
-				'WHERE `a`.`id` = ' .. urls .. '.`id`' ..
+				'WHERE `a`.`id` = `urls`.`id`' ..
 		') ' ..
 		'WHERE `group` > 0');
 	-- {{{ deep_iter(id, model, iter)
@@ -141,20 +320,18 @@ function Guuc:update_tree()
 	-- and iterate recursively thru subgroups
 	local function deep_iter(id, model, iter)
 		local s_url = 'SELECT ' ..
-			urls .. '.`id`,' ..
-			urls .. '.`scheme`,' ..
-			urls .. '.`delim`,' ..
-			urls .. '.`userinfo`,' ..
-			urls .. '.`regname`,' ..
-			urls .. '.`path`,' ..
-			urls .. '.`query`,' ..
-			urls .. '.`fragment`,' ..
-			urls .. '.`descr`' ..
-			' FROM ' ..
-			urls ..
-			' WHERE ' ..
-			urls .. '.`group`' ..
-			' = ' .. id;
+			'`urls`.`id`,' ..
+			'`urls`.`scheme`,' ..
+			'`urls`.`delim`,' ..
+			'`urls`.`userinfo`,' ..
+			'`urls`.`regname`,' ..
+			'`urls`.`path`,' ..
+			'`urls`.`query`,' ..
+			'`urls`.`fragment`,' ..
+			'`urls`.`descr`' ..
+			' FROM `urls` ' ..
+			' WHERE `urls`.`group` ' ..
+				' = ' .. id;
 		-- groups
 		local cur = self.sql:query(s_url);
 		if not cur then error(self.sql.err) end;
@@ -212,8 +389,7 @@ function Guuc:show_url(btn)
 			txturl:set_text(model:get_value(iter, 1));
 			local s = tonumber(model:get_value(iter, 2));
 			if not s then return end;
-			s = "SELECT `name`, `value` FROM " ..
-				self.sql:escape(self.sql.groups) ..
+			s = "SELECT `name`, `value` FROM `groups` " ..
 				" WHERE `url` = " .. s;
 			local cur = self.sql:query(s);
 			local stat = self.builder:get_object("statusbarMain");
@@ -328,13 +504,11 @@ function Guuc:del_url()
 		count = count - 1;
 		if count > 0 then return end;
 		self.sql:query(string.format(
-			'DELETE FROM %s WHERE `url` = %d',
-			self.sql:escape(self.sql.groups),
+			'DELETE FROM `groups` WHERE `url` = %d',
 			model:get_value(iter, 2)
 		));
 		self.sql:query(string.format(
-			'DELETE FROM %s WHERE `id` = %d',
-			self.sql:escape(self.sql.urls),
+			'DELETE FROM `urls` WHERE `id` = %d',
 			model:get_value(iter, 2)
 		));
 	end;
@@ -396,7 +570,7 @@ end;
 
 -- {{{ Guuc:move_url() -- change parent element of an item
 function Guuc:move_url()
-	self.sql:query('UPDATE ' .. self.sql:escape(self.sql.urls) ..
+	self.sql:query('UPDATE `urls` ' ..
 		' SET `group` = ' ..
 			self.sql:escape(self.row_changed.parent) ..
 		' WHERE `id` = ' ..
@@ -407,30 +581,25 @@ function Guuc:move_url()
 end;
 -- }}} Guuc:move_url()
 
--- {{{ winProperty
-function Guuc:winProperty_init(bld)
-end;
--- }}} winProperty
-
 -- {{{ Guuc:main()
 function Guuc:main()
 	local bld = self.builder;
 	-- winMain
 	local winMain = bld:get_object("winMain");
 	winMain:connect("destroy", gtk.main_quit);
-	-- menuQuit
-	local menuQuit = bld:get_object("menuQuit");
+	-- menuMainQuit
+	local menuQuit = bld:get_object("menuMainQuit");
 	menuQuit:connect("activate", gtk.main_quit);
 	-- toolbar
-	bld:get_object("toolRemove"):connect(
+	bld:get_object("toolMainRemove"):connect(
 		"clicked",
 		function(btn) self:del_url() end
 	);
-	bld:get_object("toolRefresh"):connect(
+	bld:get_object("toolMainRefresh"):connect(
 		"clicked",
 		function(btn) self:update_tree() end
 	);
-	bld:get_object("toolAdd"):connect(
+	bld:get_object("toolMainAdd"):connect(
 		"clicked",
 		function(btn) self:add_url() end
 	);
@@ -444,7 +613,6 @@ function Guuc:main()
 		end
 	);
 	--]]
-	self:winProperty_init(bld);
 	-- }}} properties toolbar
 	-- {{{ control buttons
 	bld:get_object("btnRestore"):connect(
@@ -477,18 +645,24 @@ function Guuc:main()
 		end
 	);
 	-- }}} file chooser dialog
-	-- {{{ properties dialog
-	local winDialog = bld:get_object("winProperty");
-	winDialog:connect("delete-event", gtk.widget_hide_on_delete);
-	-- }}} properties dialog
 	-- display DB content
 	self:update_tree();
 	self:init_tree();
+	local grp, e = Groups:new(self);
+	if not grp then
+		return nil, "Failed to initialize `Groups`" .. e;
+	end;
+	--grp:show();
 	gtk.main();
 	return true;
 end;
 -- }}} Guuc:main()
 
 -- }}} Guuc object
+--]==]
+
+return {
+	["Guuc"] = Guuc,
+};
 
 -- vim: set foldmethod=marker:
