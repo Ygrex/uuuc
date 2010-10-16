@@ -82,6 +82,11 @@ local sqlite3 = {
 	{ dlffi.ffi_type_pointer }
 },
 -- }}} sqlite3_stmt interface
+{
+	"last_insert_rowid",
+	dlffi.ffi_type_sint64,
+	{ dlffi.ffi_type_pointer }
+},
 ["OK"]		= 0,
 ["ERROR"]	= 1,
 ["ROW"]		= 100,
@@ -323,6 +328,68 @@ function Sqlite3:query(stmt)
 	return res;
 end;
 -- }}} Sqlite3:query
+
+-- {{{ Sqlite3:insert_uri(argv)
+function Sqlite3:insert_uri(argv)
+	local col = {};
+	local val = {};
+	for k, v in pairs(argv) do
+		local t = self.struct.url[k];
+		if t then
+			table.insert(col, string.format("`%s`", k));
+			-- FIXME escape fields here
+			if v == dlffi.NULL then
+				table.insert(val, "NULL");
+			else
+				table.insert(val, string.format("'%s'", v));
+			end;
+		end;
+	end;
+	if #col < 1 then
+		return nil, "Sqlite3:insert_uri():: invalid arguments";
+	end;
+	local que = string.format(
+		[[INSERT INTO `%s` (%s) VALUES (%s)]],
+		self.tbl.url,
+		table.concat(col, ","),
+		table.concat(val, ",")
+	);
+	local r, e = self:query(que);
+	if not r then return nil, e end;
+	return self:last_insert_rowid();
+end;
+-- }}} Sqlite3:insert_uri
+
+-- {{{ Sqlite3:fetch_uris(parent) -- return URI list
+function Sqlite3:fetch_uris(parent)
+	if not parent then
+		parent = "IS NULL";
+	elseif parent == dlffi.NULL then
+		parent = "IS NULL";
+	else
+		parent = "= " .. tostring(parent);
+	end;
+	local que = string.format(
+		[[SELECT `id`,`misc`,`unfold` FROM `%s` WHERE `parent` %s]],
+		self.tbl.url,
+		tostring(parent)
+	);
+	return self:query(que);
+end;
+-- }}} Sqlite3:fetch_uris
+
+-- {{{ Sqlite3:unfold_uri(id, unfold) -- unfold/collapse the URI
+function Sqlite3:unfold_uri(id, unfold)
+	id = tonumber(id);
+	if not id then return nil, "unfold_uri(): invalid ID" end;
+	if unfold then unfold = 1 else unfold = 0 end;
+	local que = string.format(
+		"UPDATE `%s` SET `unfold` = %d WHERE `id` = %d",
+		self.tbl.url, unfold, id
+	);
+	return self:query(que);
+end;
+-- }}} Sqlite3:unfold_uri
 
 --[==[
 -- {{{ Sql object

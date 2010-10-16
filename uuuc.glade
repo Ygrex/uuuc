@@ -8,6 +8,8 @@
       <column type="gint"/>
       <!-- column-name name -->
       <column type="gchararray"/>
+      <!-- column-name unfold -->
+      <column type="gint"/>
     </columns>
   </object>
   <object class="GtkWindow" id="Url_win">
@@ -24,8 +26,9 @@
             <property name="can_focus">True</property>
             <property name="model">Url_treestoreUrl</property>
             <property name="reorderable">True</property>
+            <property name="search_column">1</property>
             <property name="enable_tree_lines">True</property>
-            <property name="tooltip_column">0</property>
+            <property name="tooltip_column">2</property>
           </object>
           <packing>
             <property name="resize">False</property>

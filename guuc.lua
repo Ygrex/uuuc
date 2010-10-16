@@ -1,5 +1,7 @@
 require "gtk";
 
+local dlffi = require "dlffi";
+
 local Guuc = { _type = "object" };
 local Guuc_mt = { __index = Guuc };
 
@@ -31,6 +33,17 @@ function Guuc:new(sql)
 end;
 -- }}} Guuc:new()
 
+-- {{{ Guuc:err(err) -- output an error message
+function Guuc:err(err)
+	if type(err) == "table" then
+		err = table.concat(err, "\t");
+	else
+		err = tostring(err);
+	end;
+	print("EE:", err);
+end;
+-- }}} Guuc:err
+
 -- {{{ Guuc:init() -- initialize widgets
 function Guuc:init()
 	local r, e = self:attach_pop();
@@ -46,7 +59,8 @@ function Guuc:init()
 	local list = self.builder:get_object("Url_treeUrl");
 	if not list then return nil, "widget Url_treeUrl not found" end;
 	self.list = list;
-	self:init_tree();
+	local r, e = self:init_tree();
+	if not r then return nil, e end;
 	-- finalize
 	win:show_all();
 	return true;
@@ -65,7 +79,7 @@ function Guuc:attach_pop()
 		-- treat the right button only
 		if event["button"].button ~= 3 then return false end;
 		gtk.menu_popup(
-			popup,			-- menu
+			popup,		-- menu
 			nil,		-- parent_menu_shell
 			nil,		-- parent_menu_item
 			nil,		-- func
@@ -80,6 +94,77 @@ function Guuc:attach_pop()
 	return true;
 end;
 -- }}} Guuc:attach_pop
+
+-- {{{ Guuc:load_tree(list) -- load TreeView content from DB
+function Guuc:load_tree(list)
+	local model = list:get_model();
+	if not model then
+		return nil, "load_tree(): TreeModel is undefined";
+	end;
+	local sql = self.sql;
+	if not sql then
+		return nil, "load_tree(): self.sql is undefined";
+	end;
+	local iter = gtk.new("GtkTreeIter");
+	local seen = {}; -- appended IDs
+	-- {{{ loop(par_id, par_path, unfold) -- loop through URIs
+	-- par_id	- ID of theparent node
+	-- par_path	- GtkTreePath to the parent node
+	local function loop(par_id, par_path, unfold)
+		local row, e = sql:fetch_uris(par_id);
+		if not row then return nil, e end;
+		for i = 1, #row, 1 do
+			-- {{{ get the row
+			local v = row[i];
+			if seen[v[1]] then
+				return nil, string.format(
+					"load_tree(): recursion on ID %s",
+					tostring(v[1])
+				);
+			end;
+			-- }}} get the row
+			-- {{{ find the parent's iter
+			local par_iter;
+			if par_path then
+				par_iter = model:get_iter(iter, par_path);
+				if not par_iter then
+					return nil, string.format(
+						"model:get_iter() failed " ..
+						"on ID %s",
+						tostring(v[1])
+					)
+				end;
+				par_iter = iter;
+			end;
+			-- }}} find the parent's iter
+			-- {{{ display the item
+			local iter, e = self:item_new(v[1], v[2], par_iter, v[3]);
+			if not iter then
+				return nil, string.format(
+					"load_tree(): append error:: %s",
+					tostring(e)
+				);
+			end;
+			seen[v[1]] = true;
+			-- }}} display the item
+			-- {{{ unfold the parent
+			if unfold == 1 then list:expand_row(par_path, false) end;
+			-- }}} unfold the parent
+			-- {{{ find the sub-level items
+			local path = model:get_path(iter);
+			local r, e = loop(v[1], path, v[3]);
+			path:free();
+			if not r then return nil, e end;
+			-- }}} find the sub-level items
+		end;
+		return true;
+	end;
+	-- }}} loop()
+	local r, e = loop();
+	if not r then return nil, e end;
+	return true;
+end;
+-- }}} Guuc:load_tree
 
 -- {{{ Guuc:init_tree() -- initialize Url_treeUrl
 function Guuc:init_tree()
@@ -96,13 +181,68 @@ function Guuc:init_tree()
 	list:append_column(col);
 	-- }}} init columns
 	list:get_selection():set_mode(gtk.SELECTION_SINGLE);
+	local r, e = self:load_tree(list);
+	if not r then return nil, e end;
+	-- {{{ expand/collapse listeners
+	local function unfold_handler(iter, path, unfold)
+		local model = list:get_model();
+		-- {{{ write to the DB
+		local r, e = self.sql:unfold_uri(
+			list:get_model():get_value(iter, 0),
+			unfold
+		);
+		if not r then
+			return self:err{"unfold_hadler():", e};
+		end;
+		-- }}} write to the DB
+		-- {{{ mark in the tree
+		if unfold then
+			model:set_value(iter, 2, 1);
+		else
+			model:set_value(iter, 2, 0);
+		end;
+		-- }}} mark in the tree
+		-- {{{ unfold children as well
+		if unfold then
+			-- initialize iterator
+			local child = gtk.new("GtkTreeIter");
+			if model:iter_children(child, iter) then repeat
+				-- check the `unfold`
+				-- get the child's path for expanding
+				local path = model:get_path(child);
+				if model:get_value(child, 2) == 1 then
+					list:expand_row(path, false);
+				else
+					list:collapse_row(path);
+				end;
+				-- get the iterator back
+				if not model:get_iter(child, path)
+				then
+					-- path become broken
+					break;
+				end;
+				path:free();
+			until not model:iter_next(child) end;
+		end;
+		-- }}} unfold children as well
+		return true;
+	end;
+	list:connect(
+		"row-collapsed",
+		function (a, b, c, d) unfold_handler(b, c, false) end
+	);
+	list:connect(
+		"row-expanded",
+		function (a, b, c, d) unfold_handler(b, c, true) end
+	);
+	-- }}} expand/collapse listeners
 	return true;
 end;
 -- }}} Guuc:init_tree
 
--- {{{ Guuc:item_new(id, name, parent) -- add new item to Url_treeUrl
+-- {{{ Guuc:item_new(id, name, parent, unfold) -- add new item to Url_treeUrl
 --	return iterator on success
-function Guuc:item_new(id, name, parent)
+function Guuc:item_new(id, name, parent, unfold)
 	id = tonumber(id);
 	if not id then return nil, "invalid ID specified" end;
 	local list = self.list;
@@ -112,6 +252,14 @@ function Guuc:item_new(id, name, parent)
 	model:append(iter, parent);
 	model:set_value(iter, 0, id);
 	model:set_value(iter, 1, tostring(name));
+	if not tonumber(unfold) then
+		if unfold then
+			unfold = 1;
+		else
+			unfold = 0;
+		end;
+	end;
+	model:set_value(iter, 2, unfold);
 	return iter;
 end;
 -- }}} Guuc:item_new
@@ -130,16 +278,27 @@ end;
 function Guuc:init_pop()
 	local item_new = self.builder:get_object("UrlPop_new");
 	if not item_new then return nil, "menu item UrlPop_new not found" end;
-	function item_new_clicked(btn) -- create new URI
+	-- {{{ item_new_clicked -- create new URI
+	function item_new_clicked(btn)
 		-- {{{ get the parent node
 		local list = self.list;
-		if not list then return false end;
+		if not list then
+			return self:err {
+				"item_new_clicked()",
+				"TreeView is not defined"
+			};
+		end;
 		local sel = self:get_selected(list);
 		local path;
-		local id = 0;	-- parent ID
+		local id = dlffi.NULL;	-- parent ID
 		if sel then
 			local model = list:get_model();
-			if not model then return false end;
+			if not model then
+				return self:err {
+					"item_new_clicked()",
+					"TreeModel is not defined"
+				};
+			end;
 			-- get the parent's ID
 			id = model:get_value(sel, 0);
 			-- iterator will become invalid after item appending,
@@ -149,17 +308,31 @@ function Guuc:init_pop()
 		-- }}} get the parent node
 		-- {{{ write the item to the DB
 		local sql = self.sql;
-		if not sql then return false end;
+		if not sql then
+			return self:err {
+				"item_new_clicked()",
+				"ODBC is not defined"
+			};
+		end;
+		local new, e = sql:insert_uri {["parent"] = id, ["misc"] = "new item"};
+		if not new then
+			return self:err {
+				"item_new_clicked()",
+				e
+			};
+		end;
 		-- }}} write the item to the DB
 		-- {{{ display the item on the Url_treeUrl
-		self:item_new(123, "new item №123", sel);
+		self:item_new(new, "new item №123", sel);
 		if path then
 			-- unfold the parent item
 			list:expand_row(path, false);
+			path:free();
 		end;
 		-- }}} display the item on the Url_treeUrl
 		return true;
 	end;
+	-- }}} item_new_clicked
 	item_new:connect('activate', item_new_clicked);
 end;
 -- }}} Guuc:init_pop
