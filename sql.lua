@@ -191,6 +191,7 @@ end;
 
 -- {{{ Sqlite3:init()	-- prepare DB if not yet
 function Sqlite3:init()
+	-- {{{ create tables
 	for k, v in pairs(self.tbl) do
 		local fields = {};
 		for k, v in pairs(self.struct[k]) do
@@ -209,6 +210,7 @@ function Sqlite3:init()
 		local r, e = self:query(que);
 		if not r then return nil, e end;
 	end;
+	-- }}} create tables
 	local que = string.format("PRAGMA FOREIGN_KEYS = ON");
 	local r, e = self:query(que);
 	if not r then return nil, e end;
@@ -377,6 +379,22 @@ function Sqlite3:fetch_uris(parent)
 	return self:query(que);
 end;
 -- }}} Sqlite3:fetch_uris
+
+-- {{{ Sqlite3:fetch_uri(id) -- return URI info
+function Sqlite3:fetch_uri(id)
+	id = tonumber(id);
+	if not id then return nil, "fetch_uri(): Invalid ID" end;
+	local que = string.format(
+		[[SELECT `id`,`misc` FROM `%s` WHERE `id` = %d]],
+		self.tbl.url,
+		id
+	);
+	local row = self:query(que);
+	if type(row) ~= "table" then return nil end;
+	row = row[1];
+	return { ["id"] = row[1], ["misc"] = row[2] };
+end;
+-- }}} Sqlite3:fetch_uri
 
 -- {{{ Sqlite3:unfold_uri(id, unfold) -- unfold/collapse the URI
 function Sqlite3:unfold_uri(id, unfold)

@@ -28,7 +28,7 @@
             <property name="reorderable">True</property>
             <property name="search_column">1</property>
             <property name="enable_tree_lines">True</property>
-            <property name="tooltip_column">2</property>
+            <property name="tooltip_column">0</property>
           </object>
           <packing>
             <property name="resize">False</property>
@@ -85,6 +85,7 @@
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="wrap_mode">word</property>
+                    <property name="buffer">Url_bufMisc</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -124,4 +125,5 @@
       </object>
     </child>
   </object>
+  <object class="GtkTextBuffer" id="Url_bufMisc"/>
 </interface>

@@ -101,9 +101,9 @@ function Guuc:load_tree(list)
 	if not model then
 		return nil, "load_tree(): TreeModel is undefined";
 	end;
-	local sql = self.sql;
+	local sql, e = self.sql:new(self.sql.filename);
 	if not sql then
-		return nil, "load_tree(): self.sql is undefined";
+		return nil, "load_tree(): " .. tostring(e);
 	end;
 	local iter = gtk.new("GtkTreeIter");
 	local seen = {}; -- appended IDs
@@ -187,7 +187,11 @@ function Guuc:init_tree()
 	local function unfold_handler(iter, path, unfold)
 		local model = list:get_model();
 		-- {{{ write to the DB
-		local r, e = self.sql:unfold_uri(
+		local sql, e = self.sql:new(self.sql.filename);
+		if not sql then
+			return self:err{"unfold_handler():", e};
+		end;
+		local r, e = sql:unfold_uri(
 			list:get_model():get_value(iter, 0),
 			unfold
 		);
@@ -236,6 +240,70 @@ function Guuc:init_tree()
 		function (a, b, c, d) unfold_handler(b, c, true) end
 	);
 	-- }}} expand/collapse listeners
+	-- {{{ selection listener
+	local function on_changed(sel, ud)
+		-- init ODBC
+		local sql, e = self.sql:new(self.sql.filename);
+		if not sql then
+			return self:err {
+				"on_activate()",
+				"sql:new()",
+				e
+			};
+		end;
+		-- get the ID
+		local iter = gtk.new("GtkTreeIter");
+		-- pass the dummy pointer as the 1st argument
+		-- in order to got the second ret value
+		local e, model = sel:get_selected(iter, iter);
+		if not e then
+			return self:err {
+				"on_activate()",
+				"sel:get_selected() failed"
+			};
+		end;
+		if not model then
+			return self:err {
+				"on_activate()",
+				"sel:get_selected() did not return model"
+			};
+		end;
+		-- fetch the row
+		local uri, e = sql:fetch_uri(model:get_value(iter, 0));
+		if not uri then
+			return self:err {
+				"on_activate()",
+				"sql:fetch_uri()",
+				e
+			};
+		end;
+		model = nil; iter = nil; sql = nil;
+		-- fill out properties
+		local name = self.builder:get_object("Url_txtName");
+		if not name then
+			return self:err {
+				"on_activate()",
+				"Url_txtName widget not found"
+			};
+		end;
+		local misc = self.builder:get_object("Url_bufMisc");
+		if not misc then
+			return self:err {
+				"on_activate()",
+				"Url_bufMisc widget not found"
+			};
+		end;
+		-- FIXME verify charset integrity here
+		name:set_text(uri["id"]);
+		misc:set_text(uri["misc"], #(uri["misc"]));
+		return true;
+	end;
+	local sel = list:get_selection();
+	if not sel then
+		return nil, "list:get_selection() failed"
+	end;
+	sel:connect("changed", on_changed);
+	-- }}} selection listener
 	return true;
 end;
 -- }}} Guuc:init_tree
@@ -307,14 +375,18 @@ function Guuc:init_pop()
 		end;
 		-- }}} get the parent node
 		-- {{{ write the item to the DB
-		local sql = self.sql;
+		local sql, e = self.sql:new(self.sql.filename);
 		if not sql then
 			return self:err {
 				"item_new_clicked()",
-				"ODBC is not defined"
+				"ODBC is not defined",
+				e
 			};
 		end;
-		local new, e = sql:insert_uri {["parent"] = id, ["misc"] = "new item"};
+		local new, e = sql:insert_uri {
+			["parent"] = id,
+			["misc"] = "new item"
+		};
 		if not new then
 			return self:err {
 				"item_new_clicked()",
