@@ -114,15 +114,17 @@ assert(type(TBL) == "table", "TBL is not specified");
 local Sqlite3 = {
 	["_type"] = "object",	-- for a correct work of Dlffi methods
 	["tbl"] = {		-- list of interesting tables
-		["url"]		= tostring(TBL.url),	-- table for URLs
-		["prop"]	= tostring(TBL.prop),	--[[ table for available
-								properties --]]
-		["val"]		= tostring(TBL.val),	-- URLs' properties
+		["url"]		= tostring(TBL.url),
+		["group"]	= tostring(TBL.group),
+		["prop"]	= tostring(TBL.prop),
+		["item"]	= tostring(TBL.item),
+		["val"]		= tostring(TBL.val),
 	},
 	["struct"] = {
+		-- URIs
 		["url"]		= {
 				["id"]		= "INTEGER",
-				["parent"]	= "INTEGER DEFAULT 0",
+				["parent"]	= "INTEGER DEFAULT NULL",
 				["unfold"]	= "INTEGER DEFAULT 0",
 				["scheme"]	= "VARCHAR(256)",
 				["delim"]	= "VARCHAR(256)",
@@ -131,15 +133,44 @@ local Sqlite3 = {
 				["path"]	= "VARCHAR(4096)",
 				["query"]	= "VARCHAR(4096)",
 				["fragment"]	= "VARCHAR(4096)",
+				-- group of URI's properties
+				["group"]	= "INTEGER DEFAULT NULL",
+				-- URI's comments
 				["misc"]	= "VARCHAR(65536)",
 			},
+		-- properties groups
+		["group"]	= {
+				["id"]		= "INTEGER",
+				["name"]	=
+					"VARCHAR(128) DEFAULT 'New Group'",
+			},
+		-- properties' types
 		["prop"]	= {
 				["id"]		= "INTEGER",
-				["misc"]	= "VARCHAR(65536)",
+				["group"]	= "INTEGER",
+				-- type indicator
+				--	number
+				--	string
+				--	date
+				--	list
+				["type"]	= "VARCHAR(128)",
+				["name"]	= "VARCHAR(128)",
+				-- default value
+				["default"]	= "VARCHAR(65536)",
 			},
+		-- items for properties of list type
+		["item"]	= {
+				["id"]		= "INTEGER",
+				["prop"]	= "INTEGER",
+				["name"]	= "VARCHAR(256)",
+			},
+		-- properties' values
 		["val"]	= {
 				["id"]		= "INTEGER",
-				["misc"]	= "VARCHAR(65536)",
+				["prop"]	= "INTEGER",
+				["url"]		= "INTEGER",
+				-- untyped value
+				["value"]	= "VARCHAR(65536)",
 			},
 	},
 	["constraint"] = {
@@ -152,13 +183,59 @@ local Sqlite3 = {
 					[[ON UPDATE CASCADE ]] ..
 					[[DEFERRABLE INITIALLY DEFERRED ]],
 					TBL.url
-				)
+				),
+				string.format(
+					[[FOREIGN KEY(`group`) ]] ..
+					[[REFERENCES `%s`(`id`) ]] ..
+					[[ON DELETE SET DEFAULT ]] ..
+					[[ON UPDATE CASCADE ]] ..
+					[[DEFERRABLE INITIALLY DEFERRED ]],
+					TBL.group
+				),
+			},
+		["group"]	= {
+				"PRIMARY KEY (`id` AUTOINCREMENT)",
+			},
+		["prop"]	= {
+				"PRIMARY KEY (`id` AUTOINCREMENT)",
+				string.format(
+					[[FOREIGN KEY(`group`) ]] ..
+					[[REFERENCES `%s`(`id`) ]] ..
+					[[ON DELETE CASCADE ]] ..
+					[[ON UPDATE CASCADE ]] ..
+					[[DEFERRABLE INITIALLY DEFERRED ]],
+					TBL.group
+				),
+			},
+		["item"]	= {
+				"PRIMARY KEY (`id` AUTOINCREMENT)",
+				string.format(
+					[[FOREIGN KEY(`prop`) ]] ..
+					[[REFERENCES `%s`(`id`) ]] ..
+					[[ON DELETE CASCADE ]] ..
+					[[ON UPDATE CASCADE ]] ..
+					[[DEFERRABLE INITIALLY DEFERRED ]],
+					TBL.prop
+				),
 			},
 		["val"]		= {
-				"PRIMARY KEY (`id` AUTOINCREMENT)"
-			},
-		["prop"]		= {
-				"PRIMARY KEY (`id` AUTOINCREMENT)"
+				"PRIMARY KEY (`id` AUTOINCREMENT)",
+				string.format(
+					[[FOREIGN KEY(`prop`) ]] ..
+					[[REFERENCES `%s`(`id`) ]] ..
+					[[ON DELETE CASCADE ]] ..
+					[[ON UPDATE CASCADE ]] ..
+					[[DEFERRABLE INITIALLY DEFERRED ]],
+					TBL.prop
+				),
+				string.format(
+					[[FOREIGN KEY(`url`) ]] ..
+					[[REFERENCES `%s`(`id`) ]] ..
+					[[ON DELETE CASCADE ]] ..
+					[[ON UPDATE CASCADE ]] ..
+					[[DEFERRABLE INITIALLY DEFERRED ]],
+					TBL.url
+				),
 			},
 	},
 };
@@ -176,7 +253,7 @@ function Sqlite3:new(filename)
 		);
 	end;
 	local o, e = dlffi.Dlffi:new(
-		{self, sqlite3},
+		{Sqlite3, sqlite3},
 		ppDb,
 		sqlite3.close,
 		nil	-- no constructors in sqlite3
@@ -358,7 +435,8 @@ function Sqlite3:insert_uri(argv)
 	);
 	local r, e = self:query(que);
 	if not r then return nil, e end;
-	return self:last_insert_rowid();
+	local r, e = self:last_insert_rowid();
+	return r;
 end;
 -- }}} Sqlite3:insert_uri
 
@@ -372,7 +450,7 @@ function Sqlite3:fetch_uris(parent)
 		parent = "= " .. tostring(parent);
 	end;
 	local que = string.format(
-		[[SELECT `id`,`misc`,`unfold` FROM `%s` WHERE `parent` %s]],
+[[SELECT `id`,`misc`,`unfold` FROM `%s` WHERE `parent` %s ORDER BY `misc`]],
 		self.tbl.url,
 		tostring(parent)
 	);
@@ -380,21 +458,44 @@ function Sqlite3:fetch_uris(parent)
 end;
 -- }}} Sqlite3:fetch_uris
 
+-- {{{ Sqlite3:fetch_groups() -- return list of groups
+function Sqlite3:fetch_groups()
+	local que = string.format(
+		[[SELECT `id`,`name` FROM `%s` ORDER BY `name`]],
+		self.tbl.group
+	);
+	return self:query(que);
+end;
+-- }}} Sqlite3:fetch_groups
+
 -- {{{ Sqlite3:fetch_uri(id) -- return URI info
 function Sqlite3:fetch_uri(id)
 	id = tonumber(id);
 	if not id then return nil, "fetch_uri(): Invalid ID" end;
 	local que = string.format(
-		[[SELECT `id`,`misc` FROM `%s` WHERE `id` = %d]],
+		[[SELECT `id`,`misc`,`group` FROM `%s` WHERE `id` = %d]],
 		self.tbl.url,
 		id
 	);
 	local row = self:query(que);
 	if type(row) ~= "table" then return nil end;
 	row = row[1];
-	return { ["id"] = row[1], ["misc"] = row[2] };
+	return { ["id"] = row[1], ["misc"] = row[2], ["group"] = row[3] };
 end;
 -- }}} Sqlite3:fetch_uri
+
+-- {{{ Sqlite3:fetch_props(group) -- return properties of the group
+function Sqlite3:fetch_props(group)
+	group = tonumber(group);
+	if not group then return nil, "fetch_props(): Invalid group ID" end;
+	local que = string.format(
+		[[SELECT `id`,`name`,`type` FROM `%s` WHERE `group` = %d]],
+		self.tbl.prop,
+		group
+	);
+	return self:query(que);
+end;
+-- }}} Sqlite3:fetch_props
 
 -- {{{ Sqlite3:unfold_uri(id, unfold) -- unfold/collapse the URI
 function Sqlite3:unfold_uri(id, unfold)

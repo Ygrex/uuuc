@@ -13,7 +13,9 @@ DB = "db.sqlite3";
 -- tables to use
 TBL = {
 	["url"] = "url",
+	["group"] = "group",
 	["prop"] = "prop",
+	["item"] = "item",
 	["val"] = "val",
 };
 

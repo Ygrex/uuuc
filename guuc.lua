@@ -36,13 +36,22 @@ end;
 -- {{{ Guuc:err(err) -- output an error message
 function Guuc:err(err)
 	if type(err) == "table" then
-		err = table.concat(err, "\t");
+		err = table.concat(err, ": ");
 	else
 		err = tostring(err);
 	end;
 	print("EE:", err);
 end;
 -- }}} Guuc:err
+
+-- {{{ Guuc:warn(warn) -- return given error message
+function Guuc:warn(warn)
+	if type(warn) == "table" then
+		warn = table.concat(warn, ": ");
+	else warn = tostring(warn) end;
+	return nil, warn;
+end;
+-- }}} Guuc:warn
 
 -- {{{ Guuc:init() -- initialize widgets
 function Guuc:init()
@@ -60,6 +69,9 @@ function Guuc:init()
 	if not list then return nil, "widget Url_treeUrl not found" end;
 	self.list = list;
 	local r, e = self:init_tree();
+	if not r then return nil, e end;
+	-- load GroupHead
+	local r, e = self:init_groupHead();
 	if not r then return nil, e end;
 	-- finalize
 	win:show_all();
@@ -242,60 +254,45 @@ function Guuc:init_tree()
 	-- }}} expand/collapse listeners
 	-- {{{ selection listener
 	local function on_changed(sel, ud)
+		local me = "on_changed()";
 		-- init ODBC
 		local sql, e = self.sql:new(self.sql.filename);
-		if not sql then
-			return self:err {
-				"on_activate()",
-				"sql:new()",
-				e
-			};
-		end;
+		if not sql then return self:warn(me, "sql:new()", e) end;
 		-- get the ID
 		local iter = gtk.new("GtkTreeIter");
 		-- pass the dummy pointer as the 1st argument
 		-- in order to got the second ret value
 		local e, model = sel:get_selected(iter, iter);
 		if not e then
-			return self:err {
-				"on_activate()",
-				"sel:get_selected() failed"
-			};
+			return self:err {me, "sel:get_selected() failed"};
 		end;
 		if not model then
-			return self:err {
-				"on_activate()",
-				"sel:get_selected() did not return model"
-			};
+			return self:err {me,
+				"sel:get_selected() did not return model"};
 		end;
 		-- fetch the row
 		local uri, e = sql:fetch_uri(model:get_value(iter, 0));
 		if not uri then
-			return self:err {
-				"on_activate()",
-				"sql:fetch_uri()",
-				e
-			};
+			return self:err {me,
+				"sql:fetch_uri()", e};
 		end;
 		model = nil; iter = nil; sql = nil;
 		-- fill out properties
 		local name = self.builder:get_object("Url_txtName");
 		if not name then
 			return self:err {
-				"on_activate()",
-				"Url_txtName widget not found"
-			};
+				me, "Url_txtName widget not found"};
 		end;
 		local misc = self.builder:get_object("Url_bufMisc");
 		if not misc then
 			return self:err {
-				"on_activate()",
-				"Url_bufMisc widget not found"
-			};
+				me, "Url_bufMisc widget not found"};
 		end;
 		-- FIXME verify charset integrity here
 		name:set_text(uri["id"]);
 		misc:set_text(uri["misc"], #(uri["misc"]));
+		-- activate appropriate group
+		self:select_group(uri["group"]);
 		return true;
 	end;
 	local sel = list:get_selection();
@@ -395,7 +392,7 @@ function Guuc:init_pop()
 		end;
 		-- }}} write the item to the DB
 		-- {{{ display the item on the Url_treeUrl
-		self:item_new(new, "new item №123", sel);
+		local r, e = self:item_new(new, "new item", sel);
 		if path then
 			-- unfold the parent item
 			list:expand_row(path, false);
@@ -424,6 +421,119 @@ function Guuc:loop()
 	gtk.main();
 end;
 -- }}} Guuc:loop
+
+-- {{{ GroupHead
+
+-- {{{ Guuc:init_groupHead() - initialize GroupHead part
+function Guuc:init_groupHead()
+	local list = self.builder:get_object("Url_comboGroupHead");
+	if not list then return nil, "widget Url_comboGroupHead not found" end;
+	return self:load_groups(list);
+end;
+-- }}} Guuc:init_groupHead
+
+-- {{{ Guuc:load_groups(...) - load list of groups from DB
+--	list - GtkComboBoxEntry
+function Guuc:load_groups(list)
+	local me = "load_groups()";
+	-- initialize helpful objects
+	local model = list:get_model();
+	if not model then return self:warn(me, "get_model()") end;
+	local sql, e = self.sql:new(self.sql.filename);
+	if not sql then return self:warn(me, "ODBC init", e) end;
+	local iter = gtk.new("GtkTreeIter");
+	-- fetch groups from DB
+	local row, e = sql:fetch_groups();
+	if not row then return self:warn(me, "fetch_groups()", e) end;
+	-- add items one by one
+	for i = 1, #row, 1 do
+		model:append(iter);
+		local v = row[i];
+		model:set_value(iter, 0, v[1]);
+		model:set_value(iter, 1, tostring(v[2]));
+	end;
+	return true;
+end;
+-- }}} Guuc:load_groups
+
+-- {{{ Guuc:select_group(...) - set selection to the specified group
+--	id - ID of the group in DB
+function Guuc:select_group(id)
+	local me = "select_group()";
+	id = tonumber(id);
+	-- {{{ get widgets
+	local list = self.builder:get_object("Url_comboGroupHead");
+	if not list then
+		return self:warn(me, "no widget Url_comboGroupHead");
+	end;
+	local model = list:get_model();
+	if not model then
+		return self:warn(me, "no model for Url_comboGroupHead");
+	end;
+	-- }}} get widgets
+	local iter;
+	if id then
+		-- {{{ iterate through list
+		iter = gtk.new("GtkTreeIter");
+		local r = model:get_iter_first(iter);
+		if not r then
+			-- empty list
+			return true;
+		end;
+		local cur;
+		repeat
+			cur = tonumber(model:get_value(iter, 0));
+			if cur == id then break end;
+		until not model:iter_next(iter);
+		-- }}} iterate through list
+		if cur ~= id then iter = nil end;
+	end;
+	-- set selection
+	if not iter then
+		-- not found, clear the field
+		list:set_active(-1);
+		local txt = list:get_child();
+		if not txt then return self:warn(me, "list:get_child()") end;
+		txt:set_text("");
+	else
+		-- activate the item
+		list:set_active_iter(iter);
+	end;
+	self:display_group(id);
+	return true;
+end;
+-- }}} Guuc:select_group
+
+-- {{{ Guuc:display_group(...) - display properties of the group
+--	id	- ID of the group in DB
+function Guuc:display_group(id)
+	local me = "display_group()";
+	-- {{{ find and clear table
+	local tbl = self.builder:get_object("Url_tblGroupBody");
+	if not tbl then return self:warn(me, "no parent table") end;
+	local cb = function(o, ud) o:destroy() end;
+	tbl:foreach(cb, gnome.NIL);
+	-- }}} find and clear table
+	local sql, e = self.sql:new(self.sql.filename);
+	if not sql then return self:warn(me, "ODBC init", e) end;
+	-- fetch properties from DB
+	local prop, e = sql:fetch_props(id);
+	if not prop then return self:warn(me, "fetch_props()", e) end;
+	tbl:resize(#prop, 2);
+	-- iterate through found properties
+	for i = 1, #prop, 1 do
+		local v = prop[i];
+		local txt = gtk.entry_new();
+		txt:set_text(v[3]);
+		local lbl = gtk.label_new(v[2]);
+		tbl:attach(lbl, 0, 1, i, i + 1, gtk.SHRINK, gtk.SHRINK, 0, 0);
+		tbl:attach(txt, 1, 2, i, i + 1, gtk.FILL + gtk.EXPAND, gtk.SHRINK, 0, 0);
+	end;
+	tbl:show_all();
+end;
+-- }}} Guuc:display_group
+
+-- }}} GroupHead
 
 --[==[
 -- {{{ Guuc object

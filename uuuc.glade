@@ -12,6 +12,14 @@
       <column type="gint"/>
     </columns>
   </object>
+  <object class="GtkListStore" id="Url_liststoreGroup">
+    <columns>
+      <!-- column-name id -->
+      <column type="gint"/>
+      <!-- column-name name -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkWindow" id="Url_win">
     <property name="title" translatable="yes">UUUC</property>
     <property name="role">UUUC URL</property>
@@ -25,6 +33,8 @@
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="model">Url_treestoreUrl</property>
+            <property name="headers_visible">False</property>
+            <property name="headers_clickable">False</property>
             <property name="reorderable">True</property>
             <property name="search_column">1</property>
             <property name="enable_tree_lines">True</property>
@@ -111,6 +121,8 @@
                     <child>
                       <object class="GtkComboBoxEntry" id="Url_comboGroupHead">
                         <property name="visible">True</property>
+                        <property name="model">Url_liststoreGroup</property>
+                        <property name="text_column">1</property>
                       </object>
                       <packing>
                         <property name="position">0</property>
@@ -118,17 +130,21 @@
                     </child>
                     <child>
                       <object class="GtkButton" id="Url_btnGroupHead">
-                        <property name="label" translatable="yes">button</property>
+                        <property name="label" translatable="yes">Nothing</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
                       </object>
                       <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">False</property>
                         <property name="position">1</property>
                       </packing>
                     </child>
                   </object>
                   <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">False</property>
                     <property name="position">0</property>
                   </packing>
                 </child>
