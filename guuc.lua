@@ -1,9 +1,28 @@
-require "gtk";
+local gtk = require "gtk";
+assert(type(gtk) == "table", "Error loading GTK module");
 
-local dlffi = require "dlffi";
+local dlffi = gtk.dlffi;
+local gtk_t = gtk.typedef;
+local g = gtk.g;
+local gtk = gtk.gtk;
 
 local Guuc = { _type = "object" };
 local Guuc_mt = { __index = Guuc };
+
+-- {{{ bzero(...) - required to initialize GValue s
+local _bzero, e = dlffi.load("libc.so.6", "bzero", dlffi.ffi_type_void,
+	{
+		dlffi.ffi_type_pointer,
+		dlffi.ffi_type_size_t,
+	}
+);
+assert(_bzero, e);
+local bzero = function(p, n)
+	local r, e = _bzero(p, n);
+	if e then return nil, e end;
+	return p;
+end;
+-- }}} bzero()
 
 -- {{{ Guuc:new() -- constructor
 function Guuc:new(sql)
@@ -16,17 +35,24 @@ function Guuc:new(sql)
 		["builder"] = "",		-- GTK builder
 		["win"] = "",			-- Url_win
 		["list"] = "",			-- Url_treeUrl
+		["cb"] = {},			-- callbacks storage to prevent
+						-- closures to be GC'ed
+		["cl"] = {},			-- storage of closures to cb
 	};
 	if not o["glade_file"] then
 		return nil, "GLADE_FILE is not specified";
 	end;
 	setmetatable(o, Guuc_mt);
 	o.builder = gtk.builder_new();
-	local r = o.builder:add_from_file(o.glade_file, nil);
-	if r < 1 then
+	if not o.builder then
+		return nil, "GtkBuilder initialization failure";
+	end;
+	local r = o.builder:add_from_file(o.glade_file, dlffi.NULL);
+	if (not tonumber(r)) or (r < 1) then
 		return nil, "gtk_builder_add_from_file() failed";
 	end;
-	o.builder:connect_signals_full();
+--	local _, e = o.builder:connect_signals(dlffi.NULL);
+--	if e then return nil, e end;
 	local r, e = o:init();
 	if not r then return nil, e end;
 	return o;
@@ -81,28 +107,41 @@ end;
 
 -- {{{ Guuc:attach_pop() -- setup popup menu for Url_treeUrl
 function Guuc:attach_pop()
+	local me = "attach_pop()";
 	local tree = self.builder:get_object("Url_treeUrl");
 	if not tree then return nil, "widget Url_treeUrl not found" end;
 	local popup = self.builder:get_object("UrlPop_win");
 	if not popup then return nil, "widget UrlPop_win not found" end;
-	self:init_pop();
+	local r,e = self:init_pop();
+	if not r then return self:warn{me, "self:init_pop()", e} end;
 	-- popup handler
-	local function show_popup(tree, event)
+	self.cb.show_popup = function (tree, event)
+		local el = dlffi.type_element;
+		local button = el(event, gtk_t.GdkEventButton, 9);
+		local time = el(event, gtk_t.GdkEventButton, 4);
 		-- treat the right button only
-		if event["button"].button ~= 3 then return false end;
-		gtk.menu_popup(
-			popup,		-- menu
-			nil,		-- parent_menu_shell
-			nil,		-- parent_menu_item
-			nil,		-- func
-			nil,		-- data
-			event["button"].button,	-- button
-			event["button"].time
+		if button ~= 3 then return false end;
+		popup:popup(
+			dlffi.NULL,	-- parent_menu_shell
+			dlffi.NULL,	-- parent_menu_item
+			dlffi.NULL,	-- func
+			dlffi.NULL,	-- data
+			button,		-- button
+			time		-- activate_time
 		);
 		return true;
 	end;
 	-- listen to the button press event
-	tree:connect('button_press_event', show_popup);
+	self.cl.show_popup = dlffi.load(
+		self.cb.show_popup,
+		gtk_t.gboolean,
+		{
+			dlffi.ffi_type_pointer,	-- widget
+			dlffi.ffi_type_pointer,	-- event
+			dlffi.ffi_type_pointer,	-- user_data
+		}
+	);
+	tree:connect('button_press_event', self.cl.show_popup);
 	return true;
 end;
 -- }}} Guuc:attach_pop
@@ -117,7 +156,10 @@ function Guuc:load_tree(list)
 	if not sql then
 		return nil, "load_tree(): " .. tostring(e);
 	end;
-	local iter = gtk.new("GtkTreeIter");
+	local iter = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t.GtkTreeIter),
+		true
+	);
 	local seen = {}; -- appended IDs
 	-- {{{ loop(par_id, par_path, unfold) -- loop through URIs
 	-- par_id	- ID of theparent node
@@ -136,17 +178,21 @@ function Guuc:load_tree(list)
 			end;
 			-- }}} get the row
 			-- {{{ find the parent's iter
-			local par_iter;
-			if par_path then
-				par_iter = model:get_iter(iter, par_path);
-				if not par_iter then
+			local par_iter = dlffi.NULL;
+			if par_path and (par_path ~= dlffi.NULL) then
+				par_iter = dlffi.dlffi_Pointer(
+					dlffi.sizeof(gtk_t.GtkTreeIter),
+					true
+				);
+				_bzero(par_iter, dlffi.sizeof(gtk_t.GtkTreeIter));
+				local r = model:get_iter(par_iter, par_path);
+				if r ~= 1 then
 					return nil, string.format(
 						"model:get_iter() failed " ..
 						"on ID %s",
 						tostring(v[1])
 					)
 				end;
-				par_iter = iter;
 			end;
 			-- }}} find the parent's iter
 			-- {{{ display the item
@@ -160,12 +206,15 @@ function Guuc:load_tree(list)
 			seen[v[1]] = true;
 			-- }}} display the item
 			-- {{{ unfold the parent
-			if unfold == 1 then list:expand_row(par_path, false) end;
+			if not par_path then par_path = dlffi.NULL end;
+			if (unfold == 1) and (par_path ~= dlffi.NULL) then
+				list:expand_row(par_path, false);
+			end;
 			-- }}} unfold the parent
 			-- {{{ find the sub-level items
 			local path = model:get_path(iter);
 			local r, e = loop(v[1], path, v[3]);
-			path:free();
+			gtk.tree_path_free(path);
 			if not r then return nil, e end;
 			-- }}} find the sub-level items
 		end;
@@ -183,123 +232,198 @@ function Guuc:init_tree()
 	local list = self.list;
 	if not list then return nil, "self.list is undefined" end;
 	-- {{{ init columns
+	local renderer = gtk.cell_renderer_text_new();
+	if not renderer then return nil, "GtkCellRendererText failure" end;
 	local col = gtk.tree_view_column_new_with_attributes(
 		"URI",
-		gtk.new("CellRendererText"),
+		type(renderer) == "table" and renderer._val or renderer,
 		"text", 1,
-		gnome.NIL
+		dlffi.NULL
 	);
+	if not col then return nil, "GtkTreeViewColumn failure" end;
 	col:set_resizable(true);
-	list:append_column(col);
+	local r = list:append_column(col._val);
+	if tonumber(r) ~= 1 then
+		return nil, "GtkTreeView column appending failed";
+	end;
 	-- }}} init columns
 	list:get_selection():set_mode(gtk.SELECTION_SINGLE);
 	local r, e = self:load_tree(list);
 	if not r then return nil, e end;
 	-- {{{ expand/collapse listeners
-	local function unfold_handler(iter, path, unfold)
+	local unfold_handler = function(tree, iter, path, unfold)
+		local me = "unfold_handler()";
+		if unfold == dlffi.NULL then unfold = false
+		else unfold = true end;
 		local model = list:get_model();
+		-- {{{ get the item ID
+		local id, e;
+		id, e = g.value.new();
+		if not id then
+			return self:err{me, "GValue init failure", e};
+		end;
+		_, e = model:get_value(iter, 0, id);
+		if e then
+			return self:err{me, "gtk_tree_model_get_value()", e};
+		end;
+		id, e = g.value_get_int(id);
+		if not id then
+			return self:err{me, "g_value_get_int()", e};
+		end;
+		-- }}} get the item ID
 		-- {{{ write to the DB
 		local sql, e = self.sql:new(self.sql.filename);
-		if not sql then
-			return self:err{"unfold_handler():", e};
-		end;
-		local r, e = sql:unfold_uri(
-			list:get_model():get_value(iter, 0),
-			unfold
-		);
-		if not r then
-			return self:err{"unfold_hadler():", e};
-		end;
+		if not sql then return self:err{me, "ODBC init", e} end;
+		local r, e = sql:unfold_uri(id, unfold);
+		if not r then return self:err{me, "unfold_uri()", e} end;
 		-- }}} write to the DB
 		-- {{{ mark in the tree
+		local value;
+		value, e = g.value.new(gtk.G_TYPE_INT);
+		if not value then
+			return self:err{me, "GValue(value) failure", e};
+		end;
 		if unfold then
-			model:set_value(iter, 2, 1);
+			_, e = g.value_set_int(value, 1);
 		else
-			model:set_value(iter, 2, 0);
+			_, e = g.value_set_int(value, 0);
+		end;
+		if e then
+			return self:err{me, "g_value_set_int() failed", e};
+		end;
+		_, e = model:set_value(iter, 2, value);
+		if e then
+			return self:err{
+				me,
+				"GtkTreeStore set_value(value) failed",
+				e
+			};
 		end;
 		-- }}} mark in the tree
 		-- {{{ unfold children as well
 		if unfold then
 			-- initialize iterator
-			local child = gtk.new("GtkTreeIter");
-			if model:iter_children(child, iter) then repeat
+			local child = dlffi.dlffi_Pointer(
+				dlffi.sizeof(gtk_t.GtkTreeIter),
+				true
+			);
+			-- iterate through children
+			if model:iter_children(child, iter) == 1 then repeat
 				-- check the `unfold`
 				-- get the child's path for expanding
 				local path = model:get_path(child);
-				if model:get_value(child, 2) == 1 then
+				if not path then break end;
+				local unfold = g.value.new();
+				if not unfold then break end;
+				local _, e = model:get_value(child, 2, unfold);
+				if e then break end;
+				unfold = g.value_get_int(unfold);
+				if not unfold then break; end;
+				if unfold == 1 then
 					list:expand_row(path, false);
 				else
 					list:collapse_row(path);
 				end;
-				-- get the iterator back
-				if not model:get_iter(child, path)
-				then
+				-- model is probably modified, restore iterator
+				if model:get_iter(child, path) ~= 1 then
 					-- path become broken
 					break;
 				end;
-				path:free();
-			until not model:iter_next(child) end;
+				gtk.tree_path_free(path);
+			until model:iter_next(child) ~= 1 end;
 		end;
 		-- }}} unfold children as well
 		return true;
 	end;
-	list:connect(
-		"row-collapsed",
-		function (a, b, c, d) unfold_handler(b, c, false) end
+	self.cl["unfold_handler"] = dlffi.load(
+		unfold_handler,
+		dlffi.ffi_type_void,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		}
 	);
-	list:connect(
-		"row-expanded",
-		function (a, b, c, d) unfold_handler(b, c, true) end
+	-- prevent local function from being GC'ed
+	self.cb["unfold_handler"] = unfold_handler;
+	list:connect("row-collapsed",
+		self.cl["unfold_handler"],
+		dlffi.NULL
+	);
+	list:connect("row-expanded",
+		self.cl["unfold_handler"],
+		self.cl["unfold_handler"]
 	);
 	-- }}} expand/collapse listeners
 	-- {{{ selection listener
-	local function on_changed(sel, ud)
-		local me = "on_changed()";
+	local sel = list:get_selection();
+	if not sel then
+		return nil, "list:get_selection() failed"
+	end;
+	local on_changed = function(obj, ud)
+		local me, e = "on_changed()";
 		-- init ODBC
-		local sql, e = self.sql:new(self.sql.filename);
-		if not sql then return self:warn(me, "sql:new()", e) end;
+		local sql;
+		sql, e = self.sql:new(self.sql.filename);
+		if not sql then return self:warn{me, "sql:new()", e} end;
 		-- get the ID
-		local iter = gtk.new("GtkTreeIter");
-		-- pass the dummy pointer as the 1st argument
-		-- in order to got the second ret value
-		local e, model = sel:get_selected(iter, iter);
-		if not e then
-			return self:err {me, "sel:get_selected() failed"};
+		local iter = dlffi.dlffi_Pointer(
+			dlffi.sizeof(gtk_t.GtkTreeIter),
+			true
+		);
+		local model = dlffi.dlffi_Pointer();
+		local r;
+		r, e = sel:get_selected(dlffi.dlffi_Pointer(model), iter);
+		if r ~= 1 then
+			return self:err {me, "sel:get_selected() ", r, e};
 		end;
+		model, e = gtk_t(model);
 		if not model then
 			return self:err {me,
-				"sel:get_selected() did not return model"};
+				"sel:get_selected(): no model returned", e};
 		end;
 		-- fetch the row
-		local uri, e = sql:fetch_uri(model:get_value(iter, 0));
+		local val;
+		val, e = g.value.new();
+		if not val then
+			return self:err{me, "g.value.new()", e};
+		end;
+		model:get_value(iter, 0, val);
+		val = g.value_get_int(val);
+		local uri;
+		uri, e = sql:fetch_uri(val);
 		if not uri then
 			return self:err {me,
 				"sql:fetch_uri()", e};
 		end;
 		model = nil; iter = nil; sql = nil;
 		-- fill out properties
-		local name = self.builder:get_object("Url_txtName");
+		local name;
+		name, e = self.builder:get_object("Url_txtName");
 		if not name then
 			return self:err {
-				me, "Url_txtName widget not found"};
+				me, "Url_txtName widget not found", e};
 		end;
-		local misc = self.builder:get_object("Url_bufMisc");
+		local misc;
+		misc, e = self.builder:get_object("Url_bufMisc");
 		if not misc then
 			return self:err {
-				me, "Url_bufMisc widget not found"};
+				me, "Url_bufMisc widget not found", e};
 		end;
 		-- FIXME verify charset integrity here
-		name:set_text(uri["id"]);
+		name:set_text(tostring(uri["id"]));
 		misc:set_text(uri["misc"], #(uri["misc"]));
 		-- activate appropriate group
 		self:select_group(uri["group"]);
 		return true;
 	end;
-	local sel = list:get_selection();
-	if not sel then
-		return nil, "list:get_selection() failed"
-	end;
-	sel:connect("changed", on_changed);
+	self.cb["Url_treeUrl:on_changed"] = on_changed;
+	self.cl["Url_treeUrl:on_changed"] = dlffi.load(
+		on_changed, dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer }
+	);
+	sel:connect("changed", self.cl["Url_treeUrl:on_changed"]);
 	-- }}} selection listener
 	return true;
 end;
@@ -308,15 +432,26 @@ end;
 -- {{{ Guuc:item_new(id, name, parent, unfold) -- add new item to Url_treeUrl
 --	return iterator on success
 function Guuc:item_new(id, name, parent, unfold)
+	local me = "item_new()";
 	id = tonumber(id);
-	if not id then return nil, "invalid ID specified" end;
+	if not id then return self:warn{me, "invalid ID specified"} end;
 	local list = self.list;
-	if not list then return nil, "self.list undefined" end;
+	if not list then return self:warn{me, "self.list undefined"} end;
 	local model = list:get_model();
-	local iter = gtk.new("GtkTreeIter");
+	if not model then return self:warn{me, "model undefined"} end;
+	local iter = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t.GtkTreeIter),
+		true
+	);
+	if not iter then return self:warn{me, "GtkTreeIter init failure"} end;
+	if not parent then parent = dlffi.NULL end;
 	model:append(iter, parent);
-	model:set_value(iter, 0, id);
-	model:set_value(iter, 1, tostring(name));
+	local gval_id = dlffi.dlffi_Pointer(256, true);
+	g.value_init(bzero(gval_id, 256), gtk.G_TYPE_INT);
+	local gval_unfold = dlffi.dlffi_Pointer(256, true);
+	g.value_init(bzero(gval_unfold, 256), gtk.G_TYPE_INT);
+	local gval_name = dlffi.dlffi_Pointer(256, true);
+	g.value_init(bzero(gval_name, 256), gtk.G_TYPE_STRING);
 	if not tonumber(unfold) then
 		if unfold then
 			unfold = 1;
@@ -324,7 +459,15 @@ function Guuc:item_new(id, name, parent, unfold)
 			unfold = 0;
 		end;
 	end;
-	model:set_value(iter, 2, unfold);
+	g.value_set_int(gval_id, id);
+	local _id = g.value_get_int(gval_id);
+	g.value_set_int(gval_unfold, unfold);
+	local _unfold = g.value_get_int(gval_unfold);
+	g.value_set_string(gval_name, name);
+	local _name = dlffi.dlffi_Pointer(g.value_get_string(gval_name)):tostring();
+	model:set_value(iter, 0, gval_id);
+	model:set_value(iter, 1, gval_name);
+	model:set_value(iter, 2, gval_unfold);
 	return iter;
 end;
 -- }}} Guuc:item_new
@@ -341,17 +484,18 @@ end;
 
 -- {{{ Guuc:init_pop() -- initialize popup menu for Url_treeUrl
 function Guuc:init_pop()
-	local item_new = self.builder:get_object("UrlPop_new");
-	if not item_new then return nil, "menu item UrlPop_new not found" end;
+	local me = "init_pop()";
+	local UrlPop_new = self.builder:get_object("UrlPop_new");
+	if not UrlPop_new then
+		return self:warn{me, "menu item UrlPop_new not found"};
+	end;
 	-- {{{ item_new_clicked -- create new URI
-	function item_new_clicked(btn)
+	self.cb.item_new_clicked = function(btn)
+		local me = "item_new_clicked()";
 		-- {{{ get the parent node
 		local list = self.list;
 		if not list then
-			return self:err {
-				"item_new_clicked()",
-				"TreeView is not defined"
-			};
+			return self:err { me, "TreeView is not defined" };
 		end;
 		local sel = self:get_selected(list);
 		local path;
@@ -360,8 +504,7 @@ function Guuc:init_pop()
 			local model = list:get_model();
 			if not model then
 				return self:err {
-					"item_new_clicked()",
-					"TreeModel is not defined"
+					me, "TreeModel is not defined"
 				};
 			end;
 			-- get the parent's ID
@@ -393,16 +536,27 @@ function Guuc:init_pop()
 		-- }}} write the item to the DB
 		-- {{{ display the item on the Url_treeUrl
 		local r, e = self:item_new(new, "new item", sel);
+		if not r then
+			return self:err {me, "no iterator returned", e};
+		end;
 		if path then
 			-- unfold the parent item
 			list:expand_row(path, false);
 			path:free();
 		end;
+		-- select the item
+		sel:select_iter(r);
 		-- }}} display the item on the Url_treeUrl
 		return true;
 	end;
 	-- }}} item_new_clicked
-	item_new:connect('activate', item_new_clicked);
+	self.cl.item_new_clicked = dlffi.load(
+		self.cb.item_new_clicked,
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer, }
+	);
+	UrlPop_new:connect('activate', self.cl.item_new_clicked);
+	return true;
 end;
 -- }}} Guuc:init_pop
 
@@ -410,7 +564,10 @@ end;
 function Guuc:align_hpaned()
 	local hpaned = self.builder:get_object("Url_hpanUrl");
 	if not hpaned then return nil, "Url_hpanUrl not found" end;
-	local wi, he = self.win:get_size(0, 0);
+	local wi = dlffi.dlffi_Pointer(dlffi.sizeof(gtk_t.gint), true);
+	local he = dlffi.dlffi_Pointer(dlffi.sizeof(gtk_t.gint), true);
+	self.win:get_size(wi, he);
+	wi = gtk_t.unwrap(wi, gtk_t.gint);
 	hpaned:set_position(wi / 2);
 	return true;
 end;
@@ -435,22 +592,33 @@ end;
 -- {{{ Guuc:load_groups(...) - load list of groups from DB
 --	list - GtkComboBoxEntry
 function Guuc:load_groups(list)
-	local me = "load_groups()";
+	local me, e = "load_groups()";
 	-- initialize helpful objects
-	local model = list:get_model();
-	if not model then return self:warn(me, "get_model()") end;
-	local sql, e = self.sql:new(self.sql.filename);
-	if not sql then return self:warn(me, "ODBC init", e) end;
-	local iter = gtk.new("GtkTreeIter");
+	local model;
+	model, e = list:get_model();
+	if not model then return self:warn{me, "get_model()", e} end;
+	local sql;
+	sql, e = self.sql:new(self.sql.filename);
+	if not sql then return self:warn{me, "ODBC init", e} end;
+	local iter;
+	iter, e = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t.GtkTreeIter),
+		true
+	);
+	if not iter then return self:warn{me, "GtkTreeIter init", e} end;
 	-- fetch groups from DB
 	local row, e = sql:fetch_groups();
-	if not row then return self:warn(me, "fetch_groups()", e) end;
+	if not row then return self:warn{me, "fetch_groups()", e} end;
 	-- add items one by one
+	local gint = g.value.new(gtk.G_TYPE_INT);
+	local gcharray = g.value.new(gtk.G_TYPE_STRING);
 	for i = 1, #row, 1 do
-		model:append(iter);
+		model:append(iter, dlffi.NULL);
 		local v = row[i];
-		model:set_value(iter, 0, v[1]);
-		model:set_value(iter, 1, tostring(v[2]));
+		g.value_set_int(gint, tonumber(v[1]));
+		g.value_set_string(gcharray, tostring(v[2]));
+		model:set_value(iter, 0, gint);
+		model:set_value(iter, 1, gcharray);
 	end;
 	return true;
 end;
@@ -464,25 +632,30 @@ function Guuc:select_group(id)
 	-- {{{ get widgets
 	local list = self.builder:get_object("Url_comboGroupHead");
 	if not list then
-		return self:warn(me, "no widget Url_comboGroupHead");
+		return self:warn{me, "no widget Url_comboGroupHead"};
 	end;
 	local model = list:get_model();
 	if not model then
-		return self:warn(me, "no model for Url_comboGroupHead");
+		return self:warn{me, "no model for Url_comboGroupHead"};
 	end;
 	-- }}} get widgets
 	local iter;
 	if id then
 		-- {{{ iterate through list
-		iter = gtk.new("GtkTreeIter");
+		iter = dlffi.dlffi_Pointer(
+			dlffi.sizeof(gtk_t.GtkTreeIter),
+			true
+		);
 		local r = model:get_iter_first(iter);
-		if not r then
+		if r ~= 1 then
 			-- empty list
 			return true;
 		end;
 		local cur;
 		repeat
-			cur = tonumber(model:get_value(iter, 0));
+			local val = g.value.new();
+			model:get_value(iter, 0, val);
+			cur = g.value_get_int(val);
 			if cur == id then break end;
 		until not model:iter_next(iter);
 		-- }}} iterate through list
@@ -492,44 +665,65 @@ function Guuc:select_group(id)
 	if not iter then
 		-- not found, clear the field
 		list:set_active(-1);
-		local txt = list:get_child();
-		if not txt then return self:warn(me, "list:get_child()") end;
+		local txt;
+		txt, e = list:get_child();
+		if not txt then
+			return self:warn{me, "list:get_child()", e};
+		end;
 		txt:set_text("");
 	else
 		-- activate the item
 		list:set_active_iter(iter);
 	end;
-	self:display_group(id);
-	return true;
+	return self:display_group(id);
 end;
 -- }}} Guuc:select_group
 
 -- {{{ Guuc:display_group(...) - display properties of the group
 --	id	- ID of the group in DB
 function Guuc:display_group(id)
-	local me = "display_group()";
+	local me, e = "display_group()";
 	-- {{{ find and clear table
-	local tbl = self.builder:get_object("Url_tblGroupBody");
-	if not tbl then return self:warn(me, "no parent table") end;
-	local cb = function(o, ud) o:destroy() end;
-	tbl:foreach(cb, gnome.NIL);
+	local tbl;
+	tbl, e = self.builder:get_object("Url_tblGroupBody");
+	if not tbl then return self:warn{me, "no parent table", e} end;
+	local cb = function(o, ud) gtk.widget_destroy(o) end;
+	local cl = dlffi.load(cb, dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer }
+	);
+	tbl:foreach(cl, dlffi.NULL);
 	-- }}} find and clear table
 	local sql, e = self.sql:new(self.sql.filename);
-	if not sql then return self:warn(me, "ODBC init", e) end;
+	if not sql then return self:err{me, "ODBC init", e} end;
 	-- fetch properties from DB
 	local prop, e = sql:fetch_props(id);
-	if not prop then return self:warn(me, "fetch_props()", e) end;
+	if not prop then return self:err{me, "fetch_props()", e} end;
 	tbl:resize(#prop, 2);
 	-- iterate through found properties
 	for i = 1, #prop, 1 do
 		local v = prop[i];
-		local txt = gtk.entry_new();
-		txt:set_text(v[3]);
-		local lbl = gtk.label_new(v[2]);
-		tbl:attach(lbl, 0, 1, i, i + 1, gtk.SHRINK, gtk.SHRINK, 0, 0);
-		tbl:attach(txt, 1, 2, i, i + 1, gtk.FILL + gtk.EXPAND, gtk.SHRINK, 0, 0);
+		local txt;
+		txt, e = gtk.entry_new();
+		if not txt then
+			return self:err{me, "gtk_entry_new()", e};
+		end;
+		txt:set_text(tostring(v[3]));
+		local lbl;
+		lbl, e = gtk.label_new(tostring(v[2]));
+		if not lbl then
+			return self:err{me, "gtk_entry_new()", e};
+		end;
+		tbl:attach(lbl._val, 0, 1, i, i + 1,
+			gtk.SHRINK, gtk.SHRINK,
+			0, 0
+		);
+		tbl:attach(txt._val, 1, 2, i, i + 1,
+			gtk.FILL + gtk.EXPAND, gtk.SHRINK,
+			0, 0
+		);
 	end;
 	tbl:show_all();
+	return true;
 end;
 -- }}} Guuc:display_group
 
