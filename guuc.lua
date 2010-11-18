@@ -465,7 +465,7 @@ function Guuc:init_tree()
 		name:set_text(tostring(uri["uri"]));
 		misc:set_text(uri["misc"], #(uri["misc"]));
 		-- activate appropriate group
-		self:select_group(uri["group"]);
+		self:select_group(uri["group"], uri["id"]);
 		return true;
 	end;
 	self.cl["Url_treeUrl:on_changed"] = dlffi.load(
@@ -658,7 +658,8 @@ end;
 
 -- {{{ Guuc:select_group(...) - set selection to the specified group
 --	id - ID of the group in DB
-function Guuc:select_group(id)
+--	uri - URI ID
+function Guuc:select_group(id, uri)
 	local me = "select_group()";
 	id = tonumber(id);
 	-- {{{ get widgets
@@ -707,7 +708,7 @@ function Guuc:select_group(id)
 		-- activate the item
 		list:set_active_iter(iter);
 	end;
-	return self:display_group(id);
+	return self:display_group(id, uri);
 end;
 -- }}} Guuc:select_group
 
@@ -884,7 +885,7 @@ function Guuc:display_group(group, uri)
 	if not sql then return self:err{me, "ODBC init", e} end;
 	-- fetch properties from DB
 	local prop;
-	prop, e = sql:fetch_props(group, 1);
+	prop, e = sql:fetch_props(group, uri);
 	if not prop then return self:err{me, "fetch_props()", e} end;
 	tbl:resize(#prop, 2);
 	-- iterate through found properties
@@ -1001,6 +1002,7 @@ function Guuc:Url_toolUrl_Save(btn, ud)
 		local val;
 		val, e = get_widget_value(o);
 		if not val then return self:err{me, e} end;
+		-- write value
 		_, e = sql:write_value(id, prop, val);
 		if e then return self:err{me, e} end;
 	end;

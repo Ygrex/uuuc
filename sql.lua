@@ -35,6 +35,11 @@ local sqlite3 = {
 		dlffi.ffi_type_pointer,	-- pzTail
 	}
 },
+{
+	"changes",
+	dlffi.ffi_type_sint,
+	{ dlffi.ffi_type_pointer }
+},
 -- {{{ sqlite3_stmt interface
 {
 	"finalize",
@@ -594,10 +599,11 @@ function Sqlite3:fetch_props(group, uri)
 	val, uri,	-- AND
 	prop, group	-- WHERE
 	);
+	que = self:query(que);
 	if true then
 		return get_assoc(
 			{"id", "name", "type", "default", "value"},
-			self:query(que)
+			que
 		);
 	end;
 	return self:fetch_list(
@@ -639,12 +645,33 @@ end;
 --	prop	- prop ID
 --	val	- value
 function Sqlite3:write_value(uri, prop, val)
-	-- write property here
-	local me, e = "Sqlite3:write_value()";
-	-- check if value present in table
-	local r;
+	-- try to update
+	local que = string.format(
+		[[UPDATE `%s` SET `value` = '%s' ]] ..
+		[[WHERE `prop` = %d AND `url` = %d]],
+		self.tbl.val, tostring(val),
+		prop, uri
+	);
+	local r, e = self:query(que);
+	if e then return nil, "update: " .. tostring(e) end;
+	r, e = self:changes();
+	r = tonumber(r);
+	if not r then
+		return nil, "sqlite3_changes(): " .. tostring(e);
+	end;
+	if r > 0 then return true end;
+	-- try to insert new value
+	que = string.format(
+		[[INSERT INTO `%s` ]] ..
+		[[(`prop`, `url`, `value`) ]] ..
+		[[VALUES (%d, %d, '%s')]],
+		self.tbl.val,
+		prop, uri, val
+	);
 	r, e = self:query(que);
-	if type(r) == "table" then r = #r else r = 0 end;
+	if e then return nil, "insert: " .. tostring(e) end;
+	r, e = self:changes();
+	return r == 1, e;
 end;
 -- }}} Sqlite3:write_value()
 
