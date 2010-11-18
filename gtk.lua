@@ -90,6 +90,23 @@ typedef["GtkTreeIter"] = {
 	dlffi.ffi_type_pointer,	-- user_data3
 };
 assert(typedef["GtkTreeIter"]);
+typedef["GtkTextIter"] = {
+	dlffi.ffi_type_pointer,	-- dummy1
+	dlffi.ffi_type_pointer,	-- dummy2
+	typedef.gint,		-- dummy3
+	typedef.gint,		-- dummy4
+	typedef.gint,		-- dummy5
+	typedef.gint,		-- dummy6
+	typedef.gint,		-- dummy7
+	typedef.gint,		-- dummy8
+	dlffi.ffi_type_pointer,	-- dummy9
+	dlffi.ffi_type_pointer,	-- dummy10
+	typedef.gint,		-- dummy11
+	typedef.gint,		-- dummy12
+	typedef.gint,		-- dummy13
+	dlffi.ffi_type_pointer,	-- dummy14
+};
+assert(typedef["GtkTextIter"]);
 typedef["GValue"] = {
 	typedef.GType,
 	typedef.guint64,
@@ -221,6 +238,15 @@ local _gtk = {
 		typedef.GType,
 		{ },
 	},
+	{
+		"new_with_model",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			typedef.gint,
+		},
+		["_gen"] = true,
+	},
 	["_inherit"] = {
 		"gtk_combo_box",
 		"gtk_bin",
@@ -262,6 +288,14 @@ local _gtk = {
 			dlffi.ffi_type_pointer,
 		},
 	},
+	{
+		"get_active_iter",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
 	["_inherit"] = {
 		"gtk_bin",
 		"gtk_widget",
@@ -283,6 +317,13 @@ local _gtk = {
 		dlffi.ffi_type_pointer,
 		{ },
 		["_gen"] = true,
+	},
+	{
+		"get_text",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+		},
 	},
 	{
 		"set_text",
@@ -395,68 +436,6 @@ local _gtk = {
 	["_prefix"] = "gtk_paned",
 },
 -- }}} gtk_paned
--- {{{ gtk_tree_model
-{
-	{
-		"get_iter",
-		typedef.gboolean,
-		{
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-		},
-	},
-	{
-		"get_iter_first",
-		typedef.gboolean,
-		{
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-		},
-	},
-	{
-		"get_value",
-		dlffi.ffi_type_void,
-		{
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-			typedef.gint,
-			dlffi.ffi_type_pointer,
-		},
-	},
-	{
-		"get_path",
-		dlffi.ffi_type_pointer,
-		{
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-		},
-	},
-	{
-		"iter_children",
-		typedef.gboolean,
-		{
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-		},
-	},
-	{
-		"iter_next",
-		typedef.gboolean,
-		{
-			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-		},
-	},
-	["_inherit"] = {
-		"gtk_widget",
-		"g_signal",
-	},
-	-- prefix for any symbol name in the library
-	["_prefix"] = "gtk_tree_model",
-},
--- }}} gtk_tree_model
 -- {{{ gtk_tree_selection
 {
 	{
@@ -541,6 +520,15 @@ local _gtk = {
 		},
 	},
 	{
+		"newv",
+		dlffi.ffi_type_pointer,
+		{
+			typedef.gint,
+			dlffi.ffi_type_pointer,
+		},
+		["_gen"] = true,
+	},
+	{
 		"set_value",
 		typedef.gboolean,
 		{
@@ -559,6 +547,73 @@ local _gtk = {
 	["_prefix"] = "gtk_list_store",
 },
 -- }}} gtk_list_store
+-- {{{ gtk_tree_model
+{
+	{
+		"get_type",
+		typedef.GType,
+		{ },
+	},
+	{
+		"get_iter",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"get_iter_first",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"get_value",
+		dlffi.ffi_type_void,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			typedef.gint,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"get_path",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"iter_children",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"iter_next",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	["_inherit"] = {
+		"gtk_widget",
+		"g_signal",
+	},
+	-- prefix for any symbol name in the library
+	["_prefix"] = "gtk_tree_model",
+},
+-- }}} gtk_tree_model
 -- {{{ gtk_table
 {
 	{
@@ -620,10 +675,65 @@ local _gtk = {
 		"gtk_widget",
 		"g_signal",
 	},
+	{
+		"get_text",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			typedef.gboolean,
+		},
+	},
+	{
+		"get_bounds",
+		dlffi.ffi_type_void,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
 	-- prefix for any symbol name in the library
 	["_prefix"] = "gtk_text_buffer",
 },
 -- }}} gtk_text_buffer
+-- {{{ gtk_tool_button
+{
+	{
+		"get_type",
+		typedef.GType,
+		{ },
+	},
+	["_inherit"] = {
+		"gtk_widget",
+		"g_signal",
+	},
+	-- prefix for any symbol name in the library
+	["_prefix"] = "gtk_tool_button",
+},
+-- }}} gtk_tool_button
+-- {{{ gtk_text_view
+{
+	{
+		"get_type",
+		typedef.GType,
+		{ },
+	},
+	{
+		"get_buffer",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer },
+		["_gen"] = true,
+	},
+	["_inherit"] = {
+		"gtk_widget",
+		"g_signal",
+	},
+	-- prefix for any symbol name in the library
+	["_prefix"] = "gtk_text_view",
+},
+-- }}} gtk_text_view
 -- {{{ gtk_tree_view
 {
 	{
@@ -841,6 +951,23 @@ local _gtk = {
 		"value_unset",
 		dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer },
+	},
+	{
+		"object_get_data",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"object_set_data",
+		dlffi.ffi_type_void,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
 	},
 	-- prefix for any symbol name in the library
 	["_prefix"] = "g",
@@ -1065,13 +1192,15 @@ local g_value = {};
 
 g_value.new = function(gtype)
 	local size = dlffi.sizeof(typedef.GValue);
-	local val, e = dlffi.dlffi_Pointer(size, true);
+	local e;
+	if gtype == false then e = false else e = true end;
+	local val, e = dlffi.dlffi_Pointer(size, e);
 	if not val then
 		return nil, "Pointer init failure: " .. tostring(e);
 	end;
 	local _, e = _bzero(val, size);
 	if e then return nil, e end;
-	val:set_gc(_gtk.g_value_unset);
+	if gtype ~= false then val:set_gc(_gtk.g_value_unset) end;
 	if not gtype then
 		-- return uninitialized GValue
 		return val;

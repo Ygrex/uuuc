@@ -24,8 +24,56 @@ local bzero = function(p, n)
 end;
 -- }}} bzero()
 
+-- {{{ fill_model(...) - fill GtkTreeModel with given data
+--	model	- model or list view with model
+--	data	- data table
+--	header	- two keys to read from data or {1, 2} by default
+local function fill_model(model, data, header)
+	if not data then return end;
+	local me = "fill_view()";
+	if not header then header = {1, 2} end;
+	if not model then self:warn{me, "invalid GtkTreeModel"} end;
+	local r;
+	local e;
+	-- if model given or list view
+	r, e = g.type_check_instance_is_a(
+		(type(model) == "table") and model._val or model,
+		gtk.tree_model_get_type()
+	);
+	if e then
+		self:warn{me, "g_type_check_instance_is_a()", e};
+	end;
+	if r == 0 then
+		-- list view given; retreive attached model
+		model, e = model:get_model();
+		if not model then self:warn{me, "get_model()", e} end;
+	end;
+	-- initialize iterator
+	local iter;
+	iter, e = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t.GtkTreeIter),
+		true
+	);
+	if not iter then return self:warn{me, "GtkTreeIter init", e} end;
+	-- initialize GValue's
+	local gint = g.value.new(gtk.G_TYPE_INT);
+	local gcharray = g.value.new(gtk.G_TYPE_STRING);
+	-- traverse data
+	for i = 1, #data, 1 do
+		model:append(iter, dlffi.NULL);
+		local v = data[i];
+		g.value_set_int(gint, tonumber(v[header[1]]));
+		g.value_set_string(gcharray, tostring(v[header[2]]));
+		model:set_value(iter, 0, gint);
+		model:set_value(iter, 1, gcharray);
+	end;
+	return true;
+end;
+-- }}} fill_model()
+
 -- {{{ Guuc:new() -- constructor
 function Guuc:new(sql)
+	local me = "Guuc:new()";
 	if not sql then
 		return nil, "Sqlite3 connector must be specified";
 	end;
@@ -35,14 +83,19 @@ function Guuc:new(sql)
 		["builder"] = "",		-- GTK builder
 		["win"] = "",			-- Url_win
 		["list"] = "",			-- Url_treeUrl
-		["cb"] = {},			-- callbacks storage to prevent
-						-- closures to be GC'ed
 		["cl"] = {},			-- storage of closures to cb
 	};
 	if not o["glade_file"] then
 		return nil, "GLADE_FILE is not specified";
 	end;
 	setmetatable(o, Guuc_mt);
+	local e;
+	o.gtk_t, e = dlffi.Dlffi_t:new();
+	if not o.gtk_t then return self:warn{me, "Dlffi_t:new()", e} end;
+	o.gtk_t["ListStore"] = {gtk_t.GType, gtk_t.GType, gtk_t.GType};
+	if not o.gtk_t["ListStore"] then
+		return self:warn{me, "Dlffi_t:new()", "ListStore"};
+	end;
 	o.builder = gtk.builder_new();
 	if not o.builder then
 		return nil, "GtkBuilder initialization failure";
@@ -51,8 +104,6 @@ function Guuc:new(sql)
 	if (not tonumber(r)) or (r < 1) then
 		return nil, "gtk_builder_add_from_file() failed";
 	end;
---	local _, e = o.builder:connect_signals(dlffi.NULL);
---	if e then return nil, e end;
 	local r, e = o:init();
 	if not r then return nil, e end;
 	return o;
@@ -94,10 +145,13 @@ function Guuc:init()
 	local list = self.builder:get_object("Url_treeUrl");
 	if not list then return nil, "widget Url_treeUrl not found" end;
 	self.list = list;
-	local r, e = self:init_tree();
+	r, e = self:init_tree();
 	if not r then return nil, e end;
 	-- load GroupHead
-	local r, e = self:init_groupHead();
+	r, e = self:init_groupHead();
+	if not r then return nil, e end;
+	-- init Url_toolUrl
+	r, e = self:init_Url_toolUrl();
 	if not r then return nil, e end;
 	-- finalize
 	win:show_all();
@@ -115,7 +169,7 @@ function Guuc:attach_pop()
 	local r,e = self:init_pop();
 	if not r then return self:warn{me, "self:init_pop()", e} end;
 	-- popup handler
-	self.cb.show_popup = function (tree, event)
+	show_popup = function (tree, event)
 		local el = dlffi.type_element;
 		local button = el(event, gtk_t.GdkEventButton, 9);
 		local time = el(event, gtk_t.GdkEventButton, 4);
@@ -133,7 +187,7 @@ function Guuc:attach_pop()
 	end;
 	-- listen to the button press event
 	self.cl.show_popup = dlffi.load(
-		self.cb.show_popup,
+		show_popup,
 		gtk_t.gboolean,
 		{
 			dlffi.ffi_type_pointer,	-- widget
@@ -346,7 +400,6 @@ function Guuc:init_tree()
 		}
 	);
 	-- prevent local function from being GC'ed
-	self.cb["unfold_handler"] = unfold_handler;
 	list:connect("row-collapsed",
 		self.cl["unfold_handler"],
 		dlffi.NULL
@@ -393,10 +446,7 @@ function Guuc:init_tree()
 		val = g.value_get_int(val);
 		local uri;
 		uri, e = sql:fetch_uri(val);
-		if not uri then
-			return self:err {me,
-				"sql:fetch_uri()", e};
-		end;
+		if not uri then return self:err {me, "sql:fetch_uri()", e} end;
 		model = nil; iter = nil; sql = nil;
 		-- fill out properties
 		local name;
@@ -412,13 +462,12 @@ function Guuc:init_tree()
 				me, "Url_bufMisc widget not found", e};
 		end;
 		-- FIXME verify charset integrity here
-		name:set_text(tostring(uri["id"]));
+		name:set_text(tostring(uri["uri"]));
 		misc:set_text(uri["misc"], #(uri["misc"]));
 		-- activate appropriate group
 		self:select_group(uri["group"]);
 		return true;
 	end;
-	self.cb["Url_treeUrl:on_changed"] = on_changed;
 	self.cl["Url_treeUrl:on_changed"] = dlffi.load(
 		on_changed, dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer }
@@ -475,8 +524,11 @@ end;
 -- {{{ Guuc:get_selected(GtkTreeView) -- return the selected iterator
 function Guuc:get_selected(list)
 	local sel = list:get_selection();
-	local iter = gtk.new("GtkTreeIter");
-	local r = sel:get_selected(nil, iter);
+	local iter = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t.GtkTreeIter),
+		true
+	);
+	local r = sel:get_selected(dlffi.NULL, iter);
 	if not r then return nil end;
 	return iter;
 end;
@@ -490,7 +542,7 @@ function Guuc:init_pop()
 		return self:warn{me, "menu item UrlPop_new not found"};
 	end;
 	-- {{{ item_new_clicked -- create new URI
-	self.cb.item_new_clicked = function(btn)
+	item_new_clicked = function(btn)
 		local me = "item_new_clicked()";
 		-- {{{ get the parent node
 		local list = self.list;
@@ -551,7 +603,7 @@ function Guuc:init_pop()
 	end;
 	-- }}} item_new_clicked
 	self.cl.item_new_clicked = dlffi.load(
-		self.cb.item_new_clicked,
+		item_new_clicked,
 		dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer, }
 	);
@@ -593,34 +645,14 @@ end;
 --	list - GtkComboBoxEntry
 function Guuc:load_groups(list)
 	local me, e = "load_groups()";
-	-- initialize helpful objects
-	local model;
-	model, e = list:get_model();
-	if not model then return self:warn{me, "get_model()", e} end;
+	-- fetch groups from DB
 	local sql;
 	sql, e = self.sql:new(self.sql.filename);
 	if not sql then return self:warn{me, "ODBC init", e} end;
-	local iter;
-	iter, e = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t.GtkTreeIter),
-		true
-	);
-	if not iter then return self:warn{me, "GtkTreeIter init", e} end;
-	-- fetch groups from DB
-	local row, e = sql:fetch_groups();
+	local row;
+	row, e = sql:fetch_groups();
 	if not row then return self:warn{me, "fetch_groups()", e} end;
-	-- add items one by one
-	local gint = g.value.new(gtk.G_TYPE_INT);
-	local gcharray = g.value.new(gtk.G_TYPE_STRING);
-	for i = 1, #row, 1 do
-		model:append(iter, dlffi.NULL);
-		local v = row[i];
-		g.value_set_int(gint, tonumber(v[1]));
-		g.value_set_string(gcharray, tostring(v[2]));
-		model:set_value(iter, 0, gint);
-		model:set_value(iter, 1, gcharray);
-	end;
-	return true;
+	return fill_model(list, row);
 end;
 -- }}} Guuc:load_groups
 
@@ -679,37 +711,210 @@ function Guuc:select_group(id)
 end;
 -- }}} Guuc:select_group
 
+-- {{{ get_value(...) - read property's value from DB
+--	rec - DB record of the URI's property
+local function get_value(rec)
+	if rec["value"] and not (rec["value"] == dlffi.NULL) then
+		return rec["value"]
+	elseif rec["default"] and not (rec["default"] == dlffi.NULL) then
+		return rec["default"]
+	end;
+	return "";
+end;
+-- }}} get_value()
+
+-- {{{ get_widget_value(...) - read property's value from the widget
+--	widget - widget
+local function get_widget_value(widget)
+	local me, e = "get_widget_value()";
+	widget, e = gtk_t(widget);
+	if not widget then return self:warn{me, gtk_t, e} end;
+	-- {{{ GtkEntry
+	if widget.get_text then
+		widget = widget:get_text();
+		return dlffi.dlffi_Pointer(widget):tostring();
+	end;
+	-- }}} GtkEntry
+	-- {{{ GtkTextView
+	if widget.get_buffer then
+		widget, e = widget:get_buffer();
+		if not widget then
+			return self:warn{me, "get_buffer()", e};
+		end;
+		local ibeg = dlffi.dlffi_Pointer(
+			dlffi.sizeof(gtk_t["GtkTextIter"]),
+			true
+		);
+		local iend = dlffi.dlffi_Pointer(
+			dlffi.sizeof(gtk_t["GtkTextIter"]),
+			true
+		);
+		_, e = widget:get_bounds(ibeg, iend);
+		if e then return self:warn{me, "get_bounds()", e} end;
+		widget = widget:get_text(ibeg, iend, true);
+		return dlffi.dlffi_Pointer(widget, true):tostring();
+	end;
+	-- }}} GtkTextView
+	-- {{{ GtkComboBox
+	if widget.get_model and widget.get_active_iter then
+		local iter = dlffi.dlffi_Pointer(
+			dlffi.sizeof(gtk_t["GtkTreeIter"]),
+			true
+		);
+		e = widget:get_active_iter(iter);
+		if e ~= 1 then
+			-- new item selected
+			return self:warn{me, "new item selected"};
+		end;
+		if type(iter) == "table" then iter = iter._val end;
+		widget, e = widget:get_model();
+		if not widget then return self:warn{me, "get_model()", e} end;
+		local val = g.value.new();
+		widget:get_value(iter, 0, val);
+		return g.value_get_int(val);
+	end;
+	-- }}} GtkComboBox
+	return self:warn{me, "unknown widget type"};
+end;
+-- }}} get_widget_value()
+
+-- {{{ Guuc:make_list(...) - create GtkComboBoxEntry for property
+function Guuc:make_list(rec, data)
+	local me, e = "make_list()";
+	-- {{{ compose array of column types
+	local str = self.gtk_t["ListStore"];
+	local cols;
+	cols, e = dlffi.dlffi_Pointer(dlffi.sizeof(str), true);
+	if not cols then return self:warn{me, "dlffi_Pointer()", e} end;
+	e = dlffi.type_element(cols, str, 1, gtk.G_TYPE_INT);
+	if not e then return self:warn{me, "1st column"} end;
+	e = dlffi.type_element(cols, str, 2, gtk.G_TYPE_STRING);
+	if not e then return self:warn{me, "2nd column"} end;
+	-- }}} compose array of column types
+	-- {{{ create GtkComboBoxEntry
+	local model;
+	model, e = gtk.list_store_newv(2, cols);
+	if not model then return self:warn{me, "gtk_list_store_newv()", e} end;
+	local lst;
+	lst, e = gtk.combo_box_entry_new_with_model(model._val, 1);
+	if not lst then
+		model:destroy();
+		return self:warn{
+			me,
+			"gtk_combo_box_entry_new_with_model()",
+			e
+		}
+	end;
+	local destroy = function(...)
+		lst:destroy();
+		model:destroy();
+		return self:warn(...);
+	end;
+	-- }}} create GtkComboBoxEntry
+	-- {{{ fill model with data
+	_, e = fill_model(model, data);
+	if e then return destroy{me, e} end;
+	-- }}} fill model with data
+	-- {{{ set value
+	local val = tonumber(get_value(rec));
+	if val then
+		-- find index by ID
+		for i = 1, #data, 1 do
+			if data[i][1] == val then
+				e = i;
+				break;
+			end;
+		end;
+		if e then val = e - 1 else val = nil end;
+	end;
+	if not val then
+		-- no value
+		lst:set_active(-1);
+		local txt;
+		txt, e = lst:get_child();
+		if not txt then return destroy{me, "get_child()", e} end;
+		txt:set_text("");
+	else
+		lst:set_active(val);
+	end;
+	-- }}} set value
+	return lst;
+end;
+-- }}} Guuc:make_list()
+
+-- {{{ Guuc:make_text(...) - create a text field for to display property
+--	rec - record from table returned by sql:fetch_props()
+--	return GtkEntry
+function Guuc:make_text(rec)
+	local me, e = "make_text()";
+	local txt;
+	txt, e = gtk.entry_new();
+	if not txt then return self:warn{me, "gtk_entry_new()", e} end;
+	txt:set_text(tostring(get_value(rec)));
+	return txt;
+end;
+-- }}} Guuc:make_text()
+
 -- {{{ Guuc:display_group(...) - display properties of the group
---	id	- ID of the group in DB
-function Guuc:display_group(id)
+--	group	- ID of the group in DB
+--	uri	- ID of URI in DB
+function Guuc:display_group(group, uri)
 	local me, e = "display_group()";
 	-- {{{ find and clear table
 	local tbl;
 	tbl, e = self.builder:get_object("Url_tblGroupBody");
 	if not tbl then return self:warn{me, "no parent table", e} end;
-	local cb = function(o, ud) gtk.widget_destroy(o) end;
+	-- {{{ destroy child widget
+	local cb = function(o, ud)
+		local gid = g.object_get_data(o, "id");
+		if gid and (gid ~= dlffi.NULL) then
+			-- unset and free memory
+			g.value_unset(dlffi.dlffi_Pointer(gid, true));
+		end;
+		gtk.widget_destroy(o);
+	end;
+	-- }}} destroy child widget
 	local cl = dlffi.load(cb, dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer }
 	);
 	tbl:foreach(cl, dlffi.NULL);
 	-- }}} find and clear table
-	local sql, e = self.sql:new(self.sql.filename);
+	local sql;
+	sql, e = self.sql:new(self.sql.filename);
 	if not sql then return self:err{me, "ODBC init", e} end;
 	-- fetch properties from DB
-	local prop, e = sql:fetch_props(id);
+	local prop;
+	prop, e = sql:fetch_props(group, 1);
 	if not prop then return self:err{me, "fetch_props()", e} end;
 	tbl:resize(#prop, 2);
 	-- iterate through found properties
 	for i = 1, #prop, 1 do
 		local v = prop[i];
-		local txt;
-		txt, e = gtk.entry_new();
-		if not txt then
-			return self:err{me, "gtk_entry_new()", e};
+		local data;
+		if v["type"] == "list" then
+			-- read items
+			data, e = sql:fetch_items(v["id"]);
 		end;
-		txt:set_text(tostring(v[3]));
+		local val;
+		if v["type"] == "list" then
+			val, e = self:make_list(v, data);
+		else
+			val, e = self:make_text(v);
+		end;
+		if not val then return self:err{me, e} end;
+		-- create GValue to store property ID
+		local gid = g.value.new(false);
+		if gid then
+			g.value_init(gid, gtk.G_TYPE_INT);
+			g.value_set_int(gid, tonumber(v["id"]));
+			g.object_set_data(
+				(type(val) == "table") and val._val or val,
+				"id",
+				gid
+			);
+		end;
 		local lbl;
-		lbl, e = gtk.label_new(tostring(v[2]));
+		lbl, e = gtk.label_new(tostring(v["name"]));
 		if not lbl then
 			return self:err{me, "gtk_entry_new()", e};
 		end;
@@ -717,7 +922,7 @@ function Guuc:display_group(id)
 			gtk.SHRINK, gtk.SHRINK,
 			0, 0
 		);
-		tbl:attach(txt._val, 1, 2, i, i + 1,
+		tbl:attach(val._val, 1, 2, i, i + 1,
 			gtk.FILL + gtk.EXPAND, gtk.SHRINK,
 			0, 0
 		);
@@ -729,486 +934,112 @@ end;
 
 -- }}} GroupHead
 
---[==[
--- {{{ Guuc object
+-- {{{ Url_toolUrl
 
--- {{{ Guuc properties and metatable
-Guuc = {};
-Guuc_mt = { __index = Guuc };
--- }}} Guuc properties and metatable
-
--- {{{ Guuc:new() -- constructor
-function Guuc:new(sql)
-	local o = {
-		["sql"] = sql,
-		["glade_file"] = "uuuc.glade",
-		["just_added"] = false
-	};
-	setmetatable(o, Guuc_mt);
-	o.builder = gtk.builder_new();
-	local r = o.builder:add_from_file(o.glade_file, nil);
-	if r < 1 then
-		error('Glade file "' .. o.glade_file .. '" not found');
+-- {{{ Guuc:Url_toolUrl_Save() - "clicked" callback
+function Guuc:Url_toolUrl_Save(btn, ud)
+	local me, e = "Url_toolUrl_Save()";
+	-- get selected item
+	local url = self.list;
+	local uri;
+	uri, e = self:get_selected(url);
+	if not uri then return self:err{me, "get_selected()", e} end;
+	local urm;
+	urm, e = url:get_model();
+	if not urm then return self:err{me, "get_model()", e} end;
+	-- {{{ find URI ID
+	local id = g.value.new();
+	urm:get_value(type(uri) == "table" and uri._val or uri, 0, id);
+	id = g.value_get_int(id);
+	-- }}} find URI ID
+	-- {{{ gather URI info
+	-- {{{ read URI
+	local txturi;
+	txturi, e = self.builder:get_object("Url_txtName");
+	if not txturi then return self:err{me, "Url_txtName", e} end;
+	local txtmisc;
+	txtmisc, e = self.builder:get_object("Url_txtMisc");
+	if not txtmisc then return self:err{me, "Url_txtMisc", e} end;
+	txtmisc, e = txtmisc:get_buffer();
+	if not txtmisc then return self:err{me, "get_buffer()", e} end;
+	local ibeg = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t["GtkTextIter"]),
+		true
+	);
+	if not ibeg then return self:err{me, "iter_begin"} end;
+	local iend = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t["GtkTextIter"]),
+		true
+	);
+	if not iend then return self:err{me, "iter_end"} end;
+	_, e = txtmisc:get_bounds(ibeg, iend);
+	if e then return self:err{me, "get_bounds()", e} end;
+	txturi = dlffi.dlffi_Pointer(txturi:get_text()):tostring();
+	txtmisc = dlffi.dlffi_Pointer(
+		txtmisc:get_text(ibeg, iend, 1),
+		true
+	):tostring();
+	-- }}} read URI
+	-- {{{ read properties
+	local tbl;
+	tbl, e = self.builder:get_object("Url_tblGroupBody");
+	if not tbl then
+		return self:err{me, "Url_tblGroupBody", e};
 	end;
-	o.builder:connect_signals_full(_G);
-	return o;
-end;
--- }}} Guuc:new()
-
--- {{{ Guuc:init_tree() -- initialize bindings and columns for treeUrl
-function Guuc:init_tree()
-	local tree = self.builder:get_object("treeUrl");
-	-- {{{ item_click(tree, event)
-	-- callback function on a click inside GtkTreeView
-	local function item_click(tree, event)
-		if event["button"].button == 1 then
-			if event["type"] == gdk.GDK_2BUTTON_PRESS then
-				local model, iter;
-				tree:get_selection():selected_foreach(
-					function(model, path, iter, data)
-						local url = model:get_value(
-								iter,
-								1
-							);
-						if #url < 1 then
-							return false
-						end;
-						io.popen(string.format(
-							"xdg-open %q",
-							url
-						), "r");
-					end, nil
-				);
-			end
-		elseif (event["button"].button == 3) then
-			return nil;
+	local sql;
+	sql, e = self.sql:new(self.sql.filename);
+	if not sql then return self:warn{me, "ODBC init", e} end;
+	local get_child = function(o, ud)
+		local me, e = "get_child()";
+		-- get property ID
+		local prop = g.object_get_data(o, "id");
+		if prop and (prop ~= dlffi.NULL) then
+			-- read property ID
+			prop = g.value_get_int(prop);
 		end;
-	end
-	-- }}} item_click(tree, event)
-	tree:connect("cursor-changed", function(o) self:show_url(o) end);
-	tree:add_events(gdk.BUTTON_PRESS_MASK);
-	tree:connect(
-		'button_press_event',
-		item_click
+		-- get value
+		local val;
+		val, e = get_widget_value(o);
+		if not val then return self:err{me, e} end;
+		_, e = sql:write_value(id, prop, val);
+		if e then return self:err{me, e} end;
+	end;
+	local cl;
+	cl, e = dlffi.load(
+		get_child,
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer }
 	);
-	for k, v in ipairs {"Name", "URL"} do
-		local c = gtk.tree_view_column_new_with_attributes(
-			v,
-			gtk.new("CellRendererText"),
-			"text", k - 1,
-			gnome.NIL
-		);
-		c:set_resizable(true);
-		tree:append_column(c);
-	end;
-	-- drag'n'drop implementation
-	tree:get_model():connect("row-deleted",
-		function (model, path, data)
-			if self.updating then return end;
-			local parent = gtk.new("TreeIter");
-			path:up();
-			if model:get_iter(parent, path) then
-				self.row_deleted =
-					model:get_value(parent, 2);
-			else
-				self.row_deleted = 0;
-			end;
-			if self.row_changed then self:move_url() end;
-		end
-	);
-	tree:get_model():connect("row-changed",
-		function (model, path, iter, data)
-			if self.updating then return end;
-			self.row_changed = {
-				id = model:get_value(iter, 2)
-			};
-			path:up();
-			if model:get_iter(iter, path) then
-				self.row_changed.parent =
-					model:get_value(iter, 2);
-			else
-				self.row_changed.parent = 0;
-			end;
-			if self.row_deleted then self:move_url() end;
-		end
-	);
+	if not cl then return self:err{me, "closure", e} end;
+	tbl:foreach(cl, dlffi.NULL);
+	-- }}} read properties
+	-- }}} gather URI info
 end;
--- }}} Guuc:init_tree()
+-- }}} Guuc:Url_toolUrl_Save()
 
--- {{{ Guuc:update_tree() -- refresh treeUrl content
-function Guuc:update_tree()
-	local tree = self.builder:get_object("treeUrl");
-	local model = tree:get_model();
-	local sel = tree:get_selection();
-	-- {{{ remember selection
-	local id_url = gtk.new("TreeIter");
-	local id_g = nil;
-	sel:get_selected(model, id_url);
-	if model:get_value(id_url, 1, nil) ~= "" then
-		id_url = model:get_value(id_url, 2, nil);
-	else
-		id_g = model:get_value(id_url, 2, nil);
-		id_url = nil;
-	end;
-	-- }}} remember selection
-	local path = nil;
-	-- amend orphaned elements
-	self.sql:query('UPDATE `urls` ' ..
-		' SET `group` = (' ..
-			'SELECT ' ..
-				'COALESCE(`b`.`id`,0) ' ..
-				'FROM `urls` AS `a` ' ..
-				'LEFT JOIN `urls` AS `b` ' ..
-					'ON `a`.`group` = `b`.`id` ' ..
-				'WHERE `a`.`id` = `urls`.`id`' ..
-		') ' ..
-		'WHERE `group` > 0');
-	-- {{{ deep_iter(id, model, iter)
-	-- add items from group specified by `id` to GtkTreeModel
-	-- under iteration specified by `iter`
-	-- and iterate recursively thru subgroups
-	local function deep_iter(id, model, iter)
-		local s_url = 'SELECT ' ..
-			'`urls`.`id`,' ..
-			'`urls`.`scheme`,' ..
-			'`urls`.`delim`,' ..
-			'`urls`.`userinfo`,' ..
-			'`urls`.`regname`,' ..
-			'`urls`.`path`,' ..
-			'`urls`.`query`,' ..
-			'`urls`.`fragment`,' ..
-			'`urls`.`descr`' ..
-			' FROM `urls` ' ..
-			' WHERE `urls`.`group` ' ..
-				' = ' .. id;
-		-- groups
-		local cur = self.sql:query(s_url);
-		if not cur then error(self.sql.err) end;
-		local r = {};
-		local subiter = gtk.new("TreeIter");
-		while cur:fetch(r, "a") do
-			model:append(subiter, iter);
-			r["id"] = tonumber(r["id"]);
-			if (r["id"] == id_url) or self.just_added then
-				path = model:get_path(subiter);
-			end;
-			model:set(subiter,
-				0, r["descr"],
-				1, implode_uri(r),
-				2, gnome.box(r["id"], "gint64"),
-				-1
-			);
-			deep_iter(r["id"], model, subiter);
-		end;
-		cur:close();
-	end;
-	-- }}} deep_iter(id, model, iter)
-	model:clear();
-	self.updating = true;
-	deep_iter(0, model, nil);
-	self.updating = nil;
-	tree:expand_all();
-	if path ~= nil then
-		sel:unselect_all();
-		sel:select_path(path);
-	end;
-	self.just_added = false;
-	self:show_url();
-	return true;
-end;
--- }}} Guuc:update_tree()
-
--- {{{ Guuc:show_url() -- show URL info in a right panel
-function Guuc:show_url(btn)
-	local tree = self.builder:get_object("treeUrl");
-	local txtname = self.builder:get_object("txtName");
-	local txturl = self.builder:get_object("txtUrl");
-	-- clear fields
-	txtname:set_text("");
-	txturl:set_text("");
-	self:flush_prop();
-	-- loop thru selected items
-	local sel = tree:get_selection();
-	local count = sel:count_selected_rows();
-	sel:selected_foreach(
-		function(model, path, iter, data)
-			count = count - 1;
-			if count > 0 then return end;
-			txtname:set_text(model:get_value(iter, 0));
-			txturl:set_text(model:get_value(iter, 1));
-			local s = tonumber(model:get_value(iter, 2));
-			if not s then return end;
-			s = "SELECT `name`, `value` FROM `groups` " ..
-				" WHERE `url` = " .. s;
-			local cur = self.sql:query(s);
-			local stat = self.builder:get_object("statusbarMain");
-			stat:pop(13);
-			stat:push(
-				13,
-				string.format(
-					"[%d] SQL:: %s",
-					os.time(),
-					self.sql.err
-				)
-			);
-			if not cur then return end;
-			local r = {};
-			while cur:fetch(r, "a") do
-				self:add_prop(r["name"], r["value"]);
-			end;
-		end, nil
-	);
-end;
--- }}} Guuc:show_url()
-
--- {{{ Guuc:flush_prop() -- clear the property table
-function Guuc:flush_prop()
-	glib.list_foreach(
-		self.builder:get_object("tableProperty"):get_children(),
-		function (data, udata) data:destroy() end,
-		-1
-	);
-end;
--- }}} Guuc:flush_prop()
-
--- {{{ Guuc:save_url() -- saves URL info into
-function Guuc:save_url(btn)
-	local tree = self.builder:get_object("treeUrl");
-	local count = tree:get_selection():count_selected_rows();
-	local function save(model, path, iter, data)
-		count = count - 1;
-		if count > 0 then return end;
-		local prop = {};
-		glib.list_foreach(
-			self.builder:get_object(
-				"tableProperty"
-			):get_children(),
-			function (data, udata)
-				local row = data:get_data("tbl_row").value;
-				local col = data:get_data("tbl_col").value;
-				if not prop[row] then prop[row] = {} end;
-				local t = data:get_type();
-				if t == gtk.entry_get_type() then
-					prop[row][col] = data:get_text();
-				elseif t == gtk.text_view_get_type() then
-					local s = gtk.new("TextIter");
-					local e = gtk.new("TextIter");
-					local tb = data:get_buffer();
-					tb:get_bounds(s, e);
-					prop[row][col] =
-						tb:get_text(s, e, false);
-				end;
-			end,
-			-1
-		);
-		self.sql:update_url(
-			model:get_value(iter, 2),
-			self.builder:get_object("txtName"):get_text(),
-			self.builder:get_object("txtUrl"):get_text(),
-			nil,
-			prop
-		);
-		local stat = self.builder:get_object("statusbarMain");
-		stat:pop(13);
-		stat:push(
-			13,
-			string.format(
-				"[%d] SQL:: %s",
-				os.time(),
-				self.sql.err
-			)
-		);
-		self:update_tree();
-	end;
-	tree:get_selection():selected_foreach(save, nil);
-end;
--- }}} Guuc:save_url()
-
--- {{{ Guuc:add_url() -- add a new empty URL
-function Guuc:add_url()
-	self.sql.descr = "";
-	self.sql.url = "http://";
-	self.sql.group = "";
-	self.just_added = true;
-	self.sql:add();
-	local stat = self.builder:get_object("statusbarMain");
-	stat:pop(13);
-	stat:push(
-		13,
-		string.format(
-			"[%d] SQL:: %s",
-			os.time(),
-			self.sql.err
-		)
-	);
-	self:update_tree();
-end;
--- }}} Guuc:add_url
-
--- {{{ Guuc:del_url() -- delete selected URL
-function Guuc:del_url()
-	local tree = self.builder:get_object("treeUrl");
-	local count = tree:get_selection():count_selected_rows();
-	local function delete(model, path, iter, data)
-		count = count - 1;
-		if count > 0 then return end;
-		self.sql:query(string.format(
-			'DELETE FROM `groups` WHERE `url` = %d',
-			model:get_value(iter, 2)
-		));
-		self.sql:query(string.format(
-			'DELETE FROM `urls` WHERE `id` = %d',
-			model:get_value(iter, 2)
-		));
-	end;
-	tree:get_selection():selected_foreach(delete, nil);
-	local stat = self.builder:get_object("statusbarMain");
-	stat:pop(13);
-	if self.sql.err then
-		stat:push(
-			13,
-			string.format(
-				"[%d] SQL:: %s",
-				os.time(),
-				self.sql.err
-			)
-		);
-	end;
-	self:update_tree();
-end;
--- }}} Guuc:del_url
-
--- {{{ Guuc:add_prop() -- add a new property
-function Guuc:add_prop(name, value)
-	local tbl = self.builder:get_object("tableProperty");
-	local rows = glib.list_length(tbl:get_children())/2;
-	tbl:resize(rows + 1, 2);
-	local prop = {
-		{name, gtk.GTK_FILL, gtk.gtk_entry_new},
-		{value, gtk.GTK_FILL + gtk.GTK_EXPAND,
-			function ()
-				return gtk.text_view_new_with_buffer(
-					gtk.text_buffer_new()
-				)
-			end
+-- {{{ Guuc:init_Url_toolUrl()
+function Guuc:init_Url_toolUrl()
+	local me, e = "init_Url_toolUrl()";
+	local save;
+	save, e = self.builder:get_object("Url_toolUrl_Save");
+	if not save then return self:warn{me, "get_object()", e} end;
+	local closure = function (obj, ud) self:Url_toolUrl_Save(obj, ud) end;
+	closure = dlffi.load(closure,
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
 		}
-	};
-	local elements = {};
-	local view = self.builder:get_object("scrwinProperty");
-	for k, v in ipairs(prop) do
-	local txt = v[3]();
-	table.insert(elements, txt);
-	local t = txt:get_type();
-	if t == gtk.entry_get_type() then
-		txt:set_text(v[1]);
-	elseif t == gtk.text_view_get_type() then
-		txt:get_buffer():set_text(v[1], -1);
-	end;
-	tbl:attach(txt,
-		k - 1, k,
-		rows, rows + 1,
-		v[2], gtk.GTK_FILL,
-		0, 0);
-	txt:set_data("tbl_row", rows + 1);
-	txt:set_data("tbl_col", k);
-	txt:show();
-	end;
-	return elements;
-end;
--- }}} Guuc:add_prop()
-
--- {{{ Guuc:move_url() -- change parent element of an item
-function Guuc:move_url()
-	self.sql:query('UPDATE `urls` ' ..
-		' SET `group` = ' ..
-			self.sql:escape(self.row_changed.parent) ..
-		' WHERE `id` = ' ..
-			self.sql:escape(self.row_changed.id)
-		);
-	self.row_deleted = nil;
-	self.row_changed = nil;
-end;
--- }}} Guuc:move_url()
-
--- {{{ Guuc:main()
-function Guuc:main()
-	local bld = self.builder;
-	-- winMain
-	local winMain = bld:get_object("winMain");
-	winMain:connect("destroy", gtk.main_quit);
-	-- menuMainQuit
-	local menuQuit = bld:get_object("menuMainQuit");
-	menuQuit:connect("activate", gtk.main_quit);
-	-- toolbar
-	bld:get_object("toolMainRemove"):connect(
-		"clicked",
-		function(btn) self:del_url() end
 	);
-	bld:get_object("toolMainRefresh"):connect(
-		"clicked",
-		function(btn) self:update_tree() end
-	);
-	bld:get_object("toolMainAdd"):connect(
-		"clicked",
-		function(btn) self:add_url() end
-	);
-	-- {{{ properties toolbar
-	--[[
-	bld:get_object("toolPropertyAdd"):connect(
-		"clicked",
-		function(btn)
-			local e = self:add_prop("Attribute", "Value");
-			if e[1] then e[1]:grab_focus() end;
-		end
-	);
-	--]]
-	-- }}} properties toolbar
-	-- {{{ control buttons
-	bld:get_object("btnRestore"):connect(
-		"pressed",
-		function(btn) self:show_url(btn) end
-	);
-	bld:get_object("btnSave"):connect(
-		"pressed",
-		function(btn) self:save_url(btn) end
-	);
-	-- }}} control buttons
-	-- {{{ file chooser dialog
-	local winFile = bld:get_object("winFile");
-	winFile:connect("delete-event", gtk.widget_hide_on_delete);
-	bld:get_object("btnFile"):connect(
-		"pressed",
-		function (btn) winFile:show() end
-	);
-	bld:get_object("btnFileCancel"):connect(
-		"pressed",
-		function (btn) winFile:hide() end
-	);
-	bld:get_object("btnFileOk"):connect(
-		"pressed",
-		function (btn)
-			bld:get_object("txtUrl"):set_text(
-				winFile:get_uri()
-			);
-			winFile:hide();
-		end
-	);
-	-- }}} file chooser dialog
-	-- display DB content
-	self:update_tree();
-	self:init_tree();
-	local grp, e = Groups:new(self);
-	if not grp then
-		return nil, "Failed to initialize `Groups`" .. e;
-	end;
-	--grp:show();
-	gtk.main();
+	-- prevent closure from being GC'ed
+	self.cl.Url_toolUrl_Save = closure;
+	_, e = save:connect("clicked", closure);
+	if e then return self:warn{me, "connect()", e} end;
 	return true;
 end;
--- }}} Guuc:main()
+-- }}} Guuc:init_Url_toolUrl()
 
--- }}} Guuc object
---]==]
+-- }}} Url_toolUrl
 
 return {
 	["Guuc"] = Guuc,

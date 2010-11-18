@@ -12,7 +12,7 @@
 --	path
 --	query
 --	fragment
-function parse_uri(uri)
+local function parse_uri(uri)
 	local sub_delims = "$&'()*+,;=!";
 	local unreserved = "0-9a-zA-Z._~-";
 	local pct_encoded = "%a-zA-Z0-9";
@@ -127,7 +127,7 @@ end;
 
 -- {{{ encode_uri(uri)
 -- RFC 3986
-function encode_uri(uri)
+local function encode_uri(uri)
 	local unreserved = "0-9a-zA-Z._~-";
 	local sub_delims = "$&'()*+,;=!";
 	local gen_delims = ":/?#@%[%]";
@@ -147,7 +147,7 @@ end;
 
 -- {{{ decode_uri(uri)
 -- RFC 3986
-function decode_uri(uri)
+local function decode_uri(uri)
 	local function decode(uri)
 		uri = string.gsub(
 			uri,
@@ -166,9 +166,17 @@ end;
 -- }}} decode_uri(uri)
 
 -- {{{ implode_uri(uri) -- return full URI-string from the specified table
-function implode_uri(uri)
-	for k, v in pairs(uri) do
-		if (v == "") or not v then uri[k] = nil end;
+local function implode_uri(uri)
+	local header = {
+		"scheme", "delim", "userinfo",
+		"regname", "path", "query",
+		"fragment",
+	};
+	for i = 1, #header, 1 do
+		local k = header[i];
+		if type(uri[k]) ~= "string" then
+			uri[k] = nil;
+		end;
 	end;
 	local s = "";
 	if uri["scheme"] then
@@ -187,5 +195,12 @@ function implode_uri(uri)
 	return s;
 end;
 -- }}} implode_uri(uri)
+
+return {
+	["parse_uri"]	= parse_uri,
+	["encode_uri"]	= encode_uri,
+	["decode_uri"]	= decode_uri,
+	["implode_uri"]	= implode_uri,
+};
 
 -- vim: set foldmethod=marker:
