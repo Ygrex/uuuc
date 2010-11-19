@@ -12,6 +12,14 @@ local gtk = {
 	["EXPAND"]		= 1,
 	["SHRINK"]		= 2,
 	["FILL"]		= 4,
+	["FILE_CHOOSER_ACTION_OPEN"]		= 1,
+	["FILE_CHOOSER_ACTION_SAVE"]		= 2,
+	["FILE_CHOOSER_ACTION_SELECT_FOLDER"]	= 3,
+	["FILE_CHOOSER_ACTION_CREATE_FOLDER"]	= 3,
+	["STOCK_CANCEL"]	= "gtk-cancel",
+	["STOCK_OPEN"]		= "gtk-open",
+	["RESPONSE_CANCEL"]	= -6,
+	["RESPONSE_ACCEPT"]	= -3,
 };
 local gtk_mt = { __index = gtk };
 
@@ -64,8 +72,10 @@ rawset(typedef, "GQuark"		, dlffi.ffi_type_uint32);
 rawset(typedef, "GType"			, dlffi.ffi_type_size_t);
 rawset(typedef, "GdkEventType"		, dlffi.ffi_type_sint);
 rawset(typedef, "GConnectFlags"		, dlffi.ffi_type_sint);
-rawset(typedef, "GtkSelectionMode"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkAttachOptions"	, dlffi.ffi_type_sint);
+rawset(typedef, "GtkFileChooserAction"	, dlffi.ffi_type_sint);
+rawset(typedef, "GtkResponseType"	, dlffi.ffi_type_sint);
+rawset(typedef, "GtkSelectionMode"	, dlffi.ffi_type_sint);
 typedef["GError"] = { typedef.GQuark, typedef.guint, dlffi.ffi_type_pointer };
 assert(typedef["GError"]);
 typedef["GdkEventButton"] = {
@@ -154,6 +164,7 @@ rawset(typedef, "wrap", wrap);
 -- }}} GTK+ typedef
 
 -- {{{ library header
+--	sequence order is highly important or get_object() will fail
 local _gtk = {
 -- {{{ gtk
 {
@@ -293,6 +304,13 @@ local _gtk = {
 		typedef.gboolean,
 		{
 			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"get_active_text",
+		dlffi.ffi_type_pointer,
+		{
 			dlffi.ffi_type_pointer,
 		},
 	},
@@ -821,6 +839,36 @@ local _gtk = {
 	["_prefix"] = "gtk_tree_view_column",
 },
 -- }}} gtk_tree_view_column
+-- {{{ gtk_file_chooser_dialog
+{
+	{
+		"get_type",
+		typedef.GType,
+		{ },
+	},
+	{
+		"new",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			typedef.GtkFileChooserAction,
+			dlffi.ffi_type_pointer,
+			typedef.GtkResponseType,
+			dlffi.ffi_type_pointer,
+			typedef.GtkResponseType,
+			dlffi.ffi_type_pointer,
+		},
+		["_gen"] = true,
+	},
+	["_inherit"] = {
+		"gtk_file_chooser",
+		"gtk_widget",
+		"g_signal",
+	},
+	["_prefix"] = "gtk_file_chooser_dialog",
+},
+-- }}} gtk_file_chooser_dialog
 -- {{{ gtk_window
 {
 	{
@@ -891,6 +939,40 @@ local _gtk = {
 	["_prefix"] = "gtk_container",
 },
 -- }}} gtk_container
+-- {{{ gtk_file_chooser
+{
+	{
+		"get_uri",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+		},
+		
+	},
+	["_inherit"] = {
+		"gtk_widget",
+		"g_signal",
+	},
+	["_prefix"] = "gtk_file_chooser",
+},
+-- }}} gtk_file_chooser
+-- {{{ gtk_dialog
+{
+	{
+		"run",
+		typedef.gint,
+		{
+			dlffi.ffi_type_pointer,
+		},
+		
+	},
+	["_inherit"] = {
+		"gtk_widget",
+		"g_signal",
+	},
+	["_prefix"] = "gtk_dialog",
+},
+-- }}} gtk_dialog
 -- {{{ gtk_widget
 {
 	{
@@ -968,6 +1050,11 @@ local _gtk = {
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
 		},
+	},
+	{
+		"free",
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer },
 	},
 	-- prefix for any symbol name in the library
 	["_prefix"] = "g",

@@ -421,29 +421,11 @@ function Guuc:init_tree()
 		sql, e = self.sql:new(self.sql.filename);
 		if not sql then return self:warn{me, "sql:new()", e} end;
 		-- get the ID
-		local iter = dlffi.dlffi_Pointer(
-			dlffi.sizeof(gtk_t.GtkTreeIter),
-			true
-		);
-		local model = dlffi.dlffi_Pointer();
-		local r;
-		r, e = sel:get_selected(dlffi.dlffi_Pointer(model), iter);
-		if r ~= 1 then
-			return self:err {me, "sel:get_selected() ", r, e};
-		end;
-		model, e = gtk_t(model);
-		if not model then
-			return self:err {me,
-				"sel:get_selected(): no model returned", e};
-		end;
-		-- fetch the row
 		local val;
-		val, e = g.value.new();
+		val, e = self:get_active_uri(sel);
 		if not val then
-			return self:err{me, "g.value.new()", e};
+			return self:err{me, e};
 		end;
-		model:get_value(iter, 0, val);
-		val = g.value_get_int(val);
 		local uri;
 		uri, e = sql:fetch_uri(val);
 		if not uri then return self:err {me, "sql:fetch_uri()", e} end;
@@ -530,9 +512,47 @@ function Guuc:get_selected(list)
 	);
 	local r = sel:get_selected(dlffi.NULL, iter);
 	if not r then return nil end;
+	if r == 0 then return nil end;
 	return iter;
 end;
 -- }}} Guuc:get_selected
+
+-- {{{ Guuc:get_active_uri(...) - return ID of the active URI
+--	sel - GtkTreeSelection to look at;
+--		self.list:get_selection() by default
+function Guuc:get_active_uri(sel)
+	local me, e = "get_active_uri()";
+	if not sel then
+		-- GtkTreeSelection
+		sel = self.list:get_selection();
+		if not sel then return self:warn{me, "get_selection()"} end;
+	end;
+	local iter = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t.GtkTreeIter),
+		true
+	);
+	-- GtkTreeModel, GtkTreeIter
+	local model = dlffi.dlffi_Pointer();
+	local r;
+	r, e = sel:get_selected(dlffi.dlffi_Pointer(model), iter);
+	if (not r) or (r == 0) then
+		return self:warn{me, "get_selected()", r, e};
+	end;
+	model, e = gtk_t(model);
+	if not model then
+		return self:warn {
+			me,
+			"sel:get_selected(): no model returned",
+			e
+		};
+	end;
+	local val;
+	val, e = g.value.new();
+	if not val then return self:warn{me, "value_new()"} end;
+	model:get_value(iter, 0, val);
+	return g.value_get_int(val);
+end;
+-- }}} Guuc:get_active_uri()
 
 -- {{{ Guuc:init_pop() -- initialize popup menu for Url_treeUrl
 function Guuc:init_pop()
@@ -633,10 +653,111 @@ end;
 
 -- {{{ GroupHead
 
+-- {{{ read_combo(...) - get 1st, 2nd column values and active text
+--	obj - GtkComboBoxEntry
+local function read_combo(obj)
+	if not obj then
+		return nil, "invalid GtkComboBoxEntry";
+	end;
+	local txt = obj:get_active_text();
+	if not txt then return nil, "get_active_text()" end;
+	-- returned string must be freed
+	txt = dlffi.dlffi_Pointer(txt, true):tostring();
+	local model, e = obj:get_model();
+	if not model then
+		return nil, "get_model(): " .. tostring(e);
+	end;
+	local iter = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t["GtkTreeIter"]),
+		true
+	);
+	local r = obj:get_active_iter(iter);
+	if not r then return nil, "get_active_iter()" end;
+	if r == 0 then
+		-- nothing selected
+		return -1, "", txt;
+	end;
+	local fir = g.value.new();
+	local sec = g.value.new();
+	model:get_value(iter, 0, fir);
+	model:get_value(iter, 1, sec);
+	fir = g.value_get_int(fir);
+	sec = dlffi.dlffi_Pointer(
+		g.value_get_string(sec),
+		false
+	):tostring();
+	return fir, sec, txt;
+end;
+-- }}} read_combo()
+
+-- {{{ read_textview(...) - read text from GtkTextView
+--	widget	- GtkTextView;
+--		Url_txtMisc by default
+--	builder	- required if widget is not specified
+function read_textview(widget, builder)
+	local e;
+	if not widget then
+		widget, e = builder:get_object("Url_txtMisc");
+		if not widget then
+			return nil, "get_object(): " .. tostring(e);
+		end;
+	end;
+	widget, e = widget:get_buffer();
+	if not widget then
+		return nil, "get_buffer(): " .. tostring(e);
+	end;
+	local ibeg = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t["GtkTextIter"]),
+		true
+	);
+	if not ibeg then return nil, "iter_begin" end;
+	local iend = dlffi.dlffi_Pointer(
+		dlffi.sizeof(gtk_t["GtkTextIter"]),
+		true
+	);
+	if not ibeg then return nil, "iter_end" end;
+	_, e = widget:get_bounds(ibeg, iend);
+	if e then return nil, "get_bounds(): " .. tostring(e) end;
+	return dlffi.dlffi_Pointer(
+		widget:get_text(ibeg, iend, 1),
+		true
+	):tostring();
+end;
+-- }}} read_textview()
+
+-- {{{ read_textentry(...) - read text from GtkEntry
+function read_textentry(widget, builder)
+	local e;
+	if not widget then
+		widget, e = builder:get_object("Url_txtName");
+		if not widget then
+			return nil, "get_object(): " .. tostring(e);
+		end;
+	end;
+	return dlffi.dlffi_Pointer(widget:get_text()):tostring();
+end;
+-- }}} read_textentry()
+
 -- {{{ Guuc:init_groupHead() - initialize GroupHead part
 function Guuc:init_groupHead()
 	local list = self.builder:get_object("Url_comboGroupHead");
 	if not list then return nil, "widget Url_comboGroupHead not found" end;
+	local changed = function(obj, ud)
+		local me = "changed_Url_comboGroupHead()";
+		local uri, e = self:get_active_uri();
+		if not uri then self:err{me, e} end;
+		local grp;
+		grp, e = read_combo(list);
+		if not grp then self:err{me, "read_combo()", e} end;
+		self:display_group(grp, uri);
+	end;
+	changed, e = dlffi.load(changed,
+		dlffi.ffi_type_void,
+		{dlffi.ffi_type_pointer, dlffi.ffi_type_pointer}
+	);
+	if not changed then return nil, "Url_comboGroupHead closure" end;
+	list:connect("changed", changed);
+	self.cl["changed_Url_comboGroupHead"] = changed;
 	return self:load_groups(list);
 end;
 -- }}} Guuc:init_groupHead
@@ -937,6 +1058,50 @@ end;
 
 -- {{{ Url_toolUrl
 
+-- {{{ Guuc:Url_toolName_Local() - "clicked" callback
+function Guuc:Url_toolName_Local(btn, ud)
+	local me, e = "Url_toolUrl_Open()";
+	local path;
+	local dialog = self.win;
+	if type(dialog) == "table" then dialog = dialog._val end;
+	dialog, e = gtk.file_chooser_dialog_new(
+		"Choose file",
+		dialog,
+		gtk.FILE_CHOOSER_ACTION_OPEN,
+		gtk.STOCK_CANCEL,
+		gtk.RESPONSE_CANCEL,
+		gtk.STOCK_OPEN,
+		gtk.RESPONSE_ACCEPT,
+		dlffi.NULL
+	);
+	if e then return self:err{me, "dialog_new()", e} end;
+	path, e = gtk.dialog_run(dialog._val);
+	if e then return self:err{me, "dialog_run()", e} end;
+	if path == gtk.RESPONSE_ACCEPT then repeat
+		path, e = dialog:get_uri();
+		if e then
+			self:err{me, "get_uri()", e};
+			break;
+		end;
+		self.builder:get_object("Url_txtName"):set_text(path);
+		g.free(path);
+	until true end;
+	dialog:destroy();
+end;
+-- }}} Guuc:Url_toolName_Local()
+
+-- {{{ Guuc:Url_toolUrl_Open() - "clicked" callback
+function Guuc:Url_toolUrl_Open(btn, ud)
+	local me, e = "Url_toolUrl_Open()";
+	local path;
+	path, e = read_textentry(nil, self.builder);
+	if not path then
+		return self:err{me, "read_textentry()", e};
+	end;
+	io.popen(string.format("xdg-open %q", path));
+end;
+-- }}} Guuc:Url_toolUrl_Open()
+
 -- {{{ Guuc:Url_toolUrl_Save() - "clicked" callback
 function Guuc:Url_toolUrl_Save(btn, ud)
 	local me, e = "Url_toolUrl_Save()";
@@ -955,41 +1120,46 @@ function Guuc:Url_toolUrl_Save(btn, ud)
 	-- }}} find URI ID
 	-- {{{ gather URI info
 	-- {{{ read URI
-	local txturi;
-	txturi, e = self.builder:get_object("Url_txtName");
-	if not txturi then return self:err{me, "Url_txtName", e} end;
-	local txtmisc;
-	txtmisc, e = self.builder:get_object("Url_txtMisc");
-	if not txtmisc then return self:err{me, "Url_txtMisc", e} end;
-	txtmisc, e = txtmisc:get_buffer();
-	if not txtmisc then return self:err{me, "get_buffer()", e} end;
-	local ibeg = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t["GtkTextIter"]),
-		true
-	);
-	if not ibeg then return self:err{me, "iter_begin"} end;
-	local iend = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t["GtkTextIter"]),
-		true
-	);
-	if not iend then return self:err{me, "iter_end"} end;
-	_, e = txtmisc:get_bounds(ibeg, iend);
-	if e then return self:err{me, "get_bounds()", e} end;
-	txturi = dlffi.dlffi_Pointer(txturi:get_text()):tostring();
-	txtmisc = dlffi.dlffi_Pointer(
-		txtmisc:get_text(ibeg, iend, 1),
-		true
-	):tostring();
+	local txturi, txtmisc;
+	txturi, e = read_textentry(nil, self.builder);
+	if e then return self:err{me, "read_textentry()", e} end;
+	txtmisc, e = read_textview(nil, self.builder);
+	if e then return self:err{me, "read_textview()", e} end;
 	-- }}} read URI
-	-- {{{ read properties
+	-- {{{ read group
+	local grp_id, grp_txt, txtgrp = read_combo(
+		self.builder:get_object("Url_comboGroupHead")
+	);
+	if not grp_id then
+		return self:err{me, "get_object", grp_txt};
+	end;
+	if grp_txt ~= txtgrp then
+		-- new group
+		return self:err{
+			me,
+			"group creating not implemented"
+		};
+	end;
+	-- }}} read group
+	-- {{{ write URI
+	if grp_id < 0 then grp_id = nil end;
+	local sql;
+	sql, e = self.sql:new(self.sql.filename);
+	if not sql then return self:warn{me, "ODBC init", e} end;
+	_, e = sql:write_uri(id, txturi, txtmisc, grp_id);
+	if e then return self:err{me, "write_uri()", e} end;
+	-- }}} write URI
+	-- {{{ update URI name in GtkTreeView
+	local val = g.value.new(gtk.G_TYPE_STRING);
+	g.value_set_string(val, txtmisc);
+	urm:set_value(uri, 1, val);
+	-- }}} update URI name in GtkTreeView
+	-- {{{ read/write properties
 	local tbl;
 	tbl, e = self.builder:get_object("Url_tblGroupBody");
 	if not tbl then
 		return self:err{me, "Url_tblGroupBody", e};
 	end;
-	local sql;
-	sql, e = self.sql:new(self.sql.filename);
-	if not sql then return self:warn{me, "ODBC init", e} end;
 	local get_child = function(o, ud)
 		local me, e = "get_child()";
 		-- get property ID
@@ -1014,7 +1184,7 @@ function Guuc:Url_toolUrl_Save(btn, ud)
 	);
 	if not cl then return self:err{me, "closure", e} end;
 	tbl:foreach(cl, dlffi.NULL);
-	-- }}} read properties
+	-- }}} read/write properties
 	-- }}} gather URI info
 end;
 -- }}} Guuc:Url_toolUrl_Save()
@@ -1022,21 +1192,36 @@ end;
 -- {{{ Guuc:init_Url_toolUrl()
 function Guuc:init_Url_toolUrl()
 	local me, e = "init_Url_toolUrl()";
-	local save;
-	save, e = self.builder:get_object("Url_toolUrl_Save");
-	if not save then return self:warn{me, "get_object()", e} end;
-	local closure = function (obj, ud) self:Url_toolUrl_Save(obj, ud) end;
-	closure = dlffi.load(closure,
-		dlffi.ffi_type_pointer,
-		{
+	-- buttons to attach "connect" handler
+	local btn = {
+		"Url_toolUrl_Save",
+		"Url_toolUrl_Open",
+		"Url_toolName_Local",
+	};
+	for i = 1, #btn, 1 do
+		local cur;
+		cur, e = self.builder:get_object(btn[i]);
+		local name = btn[i];
+		if not cur then
+			return self:warn{me, "get_object()", name, e};
+		end;
+		local closure = function (obj, ud)
+			self[name](self, obj, ud);
+		end;
+		closure = dlffi.load(closure,
 			dlffi.ffi_type_pointer,
-			dlffi.ffi_type_pointer,
-		}
-	);
-	-- prevent closure from being GC'ed
-	self.cl.Url_toolUrl_Save = closure;
-	_, e = save:connect("clicked", closure);
-	if e then return self:warn{me, "connect()", e} end;
+			{
+				dlffi.ffi_type_pointer,
+				dlffi.ffi_type_pointer,
+			}
+		);
+		-- prevent closure from being GC'ed
+		self.cl[name] = closure;
+		_, e = cur:connect("clicked", closure);
+		if e then
+			return self:warn{me, "connect()", name, e};
+		end;
+	end;
 	return true;
 end;
 -- }}} Guuc:init_Url_toolUrl()

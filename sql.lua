@@ -505,7 +505,8 @@ function Sqlite3:fetch_uri(id)
 		["query"]	= row[9],
 		["fragment"]	= row[10],
 	};
-	row["uri"] = utils.implode_uri(row);
+	-- FIXME dummy URI
+	row["uri"] = row["path"];
 	return row;
 end;
 -- }}} Sqlite3:fetch_uri
@@ -640,7 +641,7 @@ function Sqlite3:unfold_uri(id, unfold)
 end;
 -- }}} Sqlite3:unfold_uri
 
--- {{{ Sqlite3:write_value() - write value for the URI's property
+-- {{{ Sqlite3:write_value(...) - write value for the URI's property
 --	uri	- URI ID
 --	prop	- prop ID
 --	val	- value
@@ -674,6 +675,61 @@ function Sqlite3:write_value(uri, prop, val)
 	return r == 1, e;
 end;
 -- }}} Sqlite3:write_value()
+
+-- {{{ Sqlite3:write_uri(...) - update URI info
+--	id	- URI ID
+--	uri	- URI text representation
+--	misc	- comments
+--	group	- URI group ID
+function Sqlite3:write_uri(id, uri, misc, group)
+	group = tonumber(group);
+	if not group then
+		group = "NULL";
+	elseif group < 0 then
+		group = "NULL";
+	end;
+	id = tonumber(id);
+	-- update URI information
+	local que = string.format(
+		[[UPDATE `%s` SET ]] ..
+			[[`path` = '%s', ]] ..
+			[[`misc` = '%s', ]] ..
+			[[`group` = %s ]] ..
+		[[WHERE `id` = %d]],
+		self.tbl.url,
+		tostring(uri), -- path (FIXME dummy)
+		tostring(misc),
+		group,
+		id -- WHERE
+	);
+	local r, e = self:query(que);
+	if not r then
+		return nil, "UPDATE: " .. tostring(e);
+	end;
+	-- delete stale property values
+	que = string.format(
+		[[DELETE FROM `%s` ]] ..
+		[[WHERE `id` IN (]] ..
+			[[SELECT `%s`.`id` FROM `%s` ]] ..
+			[[LEFT JOIN `%s` ]] ..
+			[[ON `%s`.`prop` = `%s`.`id` ]] ..
+			[[WHERE `%s`.`url` = %d ]] ..
+			[[AND `%s`.`group` != %s]] ..
+		[[)]],
+		self.tbl.val, -- DELETE FROM
+		self.tbl.val, self.tbl.val, -- SELECT FROM
+		self.tbl.prop, -- LEFT JOIN
+		self.tbl.val, self.tbl.prop, -- ON
+		self.tbl.val, id, -- WHERE
+		self.tbl.prop, group -- AND
+	);
+	r, e = self:query(que);
+	if not r then
+		return nil, "DELETE: " .. tostring(e);
+	end;
+	return true;
+end;
+-- }}} Sqlite3:write_uri()
 
 return {
 	["Sqlite3"] = Sqlite3,
