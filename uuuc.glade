@@ -29,19 +29,32 @@
         <property name="visible">True</property>
         <property name="can_focus">True</property>
         <child>
-          <object class="GtkTreeView" id="Url_treeUrl">
+          <object class="GtkScrolledWindow" id="Url_scrwinUrl">
             <property name="visible">True</property>
             <property name="can_focus">True</property>
-            <property name="model">Url_treestoreUrl</property>
-            <property name="headers_visible">False</property>
-            <property name="headers_clickable">False</property>
-            <property name="reorderable">True</property>
-            <property name="search_column">1</property>
-            <property name="enable_tree_lines">True</property>
-            <property name="tooltip_column">0</property>
+            <property name="hscrollbar_policy">automatic</property>
+            <property name="vscrollbar_policy">automatic</property>
+            <child>
+              <object class="GtkViewport" id="Url_viewportUrl">
+                <property name="visible">True</property>
+                <property name="resize_mode">queue</property>
+                <child>
+                  <object class="GtkTreeView" id="Url_treeUrl">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="model">Url_treestoreUrl</property>
+                    <property name="headers_visible">False</property>
+                    <property name="reorderable">True</property>
+                    <property name="search_column">1</property>
+                    <property name="enable_tree_lines">True</property>
+                    <property name="tooltip_column">0</property>
+                  </object>
+                </child>
+              </object>
+            </child>
           </object>
           <packing>
-            <property name="resize">False</property>
+            <property name="resize">True</property>
             <property name="shrink">True</property>
           </packing>
         </child>
@@ -216,22 +229,36 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkTable" id="Url_tblGroupBody">
+                      <object class="GtkScrolledWindow" id="Url_scrwinGroupBody">
                         <property name="visible">True</property>
-                        <property name="n_rows">2</property>
-                        <property name="n_columns">2</property>
-                        <property name="row_spacing">2</property>
+                        <property name="can_focus">True</property>
+                        <property name="hscrollbar_policy">automatic</property>
+                        <property name="vscrollbar_policy">automatic</property>
                         <child>
-                          <placeholder/>
-                        </child>
-                        <child>
-                          <placeholder/>
-                        </child>
-                        <child>
-                          <placeholder/>
-                        </child>
-                        <child>
-                          <placeholder/>
+                          <object class="GtkViewport" id="Urr_viewportGroupBody">
+                            <property name="visible">True</property>
+                            <property name="resize_mode">queue</property>
+                            <child>
+                              <object class="GtkTable" id="Url_tblGroupBody">
+                                <property name="visible">True</property>
+                                <property name="n_rows">2</property>
+                                <property name="n_columns">2</property>
+                                <property name="row_spacing">2</property>
+                                <child>
+                                  <placeholder/>
+                                </child>
+                                <child>
+                                  <placeholder/>
+                                </child>
+                                <child>
+                                  <placeholder/>
+                                </child>
+                                <child>
+                                  <placeholder/>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
                         </child>
                       </object>
                       <packing>
