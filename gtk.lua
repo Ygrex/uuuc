@@ -20,6 +20,13 @@ local gtk = {
 	["STOCK_OPEN"]		= "gtk-open",
 	["RESPONSE_CANCEL"]	= -6,
 	["RESPONSE_ACCEPT"]	= -3,
+	["G_SPAWN_LEAVE_DESCRIPTORS_OPEN"]	= 1,
+	["G_SPAWN_DO_NOT_REAP_CHILD"]		= 2,
+	["G_SPAWN_SEARCH_PATH"]			= 4,
+	["G_SPAWN_STDOUT_TO_DEV_NULL"]		= 8,
+	["G_SPAWN_STDERR_TO_DEV_NULL"]		= 16,
+	["G_SPAWN_CHILD_INHERITS_STDIN"]	= 32,
+	["G_SPAWN_FILE_AND_ARGV_ZERO"]		= 64,
 };
 local gtk_mt = { __index = gtk };
 
@@ -76,6 +83,7 @@ rawset(typedef, "GtkAttachOptions"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkFileChooserAction"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkResponseType"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkSelectionMode"	, dlffi.ffi_type_sint);
+rawset(typedef, "GSpawnFlags"		, dlffi.ffi_type_sint);
 typedef["GError"] = { typedef.GQuark, typedef.guint, dlffi.ffi_type_pointer };
 assert(typedef["GError"]);
 typedef["GdkEventButton"] = {
@@ -689,6 +697,14 @@ local _gtk = {
 			typedef.gint,
 		},
 	},
+	{
+		"new",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+		},
+		["_gen"] = true,
+	},
 	["_inherit"] = {
 		"gtk_widget",
 		"g_signal",
@@ -737,6 +753,12 @@ local _gtk = {
 		"get_type",
 		typedef.GType,
 		{ },
+	},
+	{
+		"new_with_buffer",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer },
+		["_gen"] = true,
 	},
 	{
 		"get_buffer",
@@ -1089,6 +1111,39 @@ local _gtk = {
 	["_prefix"] = "g_signal",
 },
 -- }}} g_signal
+-- {{{ gdk
+{
+	{
+		"display_get_default",
+		dlffi.ffi_type_pointer,
+		{},
+	},
+	{
+		"display_get_default_screen",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer },
+	},
+	{
+		"spawn_on_screen_with_pipes",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,	-- screen
+			dlffi.ffi_type_pointer,	-- working_directory
+			dlffi.ffi_type_pointer,	-- argv
+			dlffi.ffi_type_pointer,	-- envp
+			typedef.GSpawnFlags,	-- flags
+			dlffi.ffi_type_pointer,	-- child_setup
+			dlffi.ffi_type_pointer,	-- user_data
+			dlffi.ffi_type_pointer,	-- child_pid
+			dlffi.ffi_type_pointer,	-- stdin
+			dlffi.ffi_type_pointer,	-- stdout
+			dlffi.ffi_type_pointer,	-- stderr
+			dlffi.ffi_type_pointer,	-- error
+		},
+	},
+	["_prefix"] = "gdk",
+},
+-- }}} gdk
 };
 -- }}} library header
 
@@ -1342,6 +1397,7 @@ if not r then return e end;
 return {
 	["gtk"] = gtk,
 	["g"] = find_header("g"),
+	["gdk"] = find_header("gdk"),
 	["dlffi"] = dlffi,
 	["typedef"] = typedef
 };

@@ -159,9 +159,9 @@ local Sqlite3 = {
 				["id"]		= "INTEGER",
 				["group"]	= "INTEGER",
 				-- type indicator
-				--	number
 				--	string
-				--	date
+				--	text
+				--	file
 				--	list
 				["type"]	= "VARCHAR(128)",
 				["name"]	= "VARCHAR(128)",

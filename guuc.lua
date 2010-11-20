@@ -4,6 +4,7 @@ assert(type(gtk) == "table", "Error loading GTK module");
 local dlffi = gtk.dlffi;
 local gtk_t = gtk.typedef;
 local g = gtk.g;
+local gdk = gtk.gdk;
 local gtk = gtk.gtk;
 
 local Guuc = { _type = "object" };
@@ -874,7 +875,8 @@ local function get_widget_value(widget)
 		_, e = widget:get_bounds(ibeg, iend);
 		if e then return self:warn{me, "get_bounds()", e} end;
 		widget = widget:get_text(ibeg, iend, true);
-		return dlffi.dlffi_Pointer(widget, true):tostring();
+		widget = dlffi.dlffi_Pointer(widget, true):tostring();
+		return widget;
 	end;
 	-- }}} GtkTextView
 	-- {{{ GtkComboBox
@@ -970,12 +972,32 @@ end;
 function Guuc:make_text(rec)
 	local me, e = "make_text()";
 	local txt;
+	txt, e = gtk.text_buffer_new(dlffi.NULL);
+	if (not txt) or (txt == dlffi.NULL) then
+		return self:warn{me, "text_buffer_new()", e};
+	end;
+	local view;
+	view, e = gtk.text_view_new_with_buffer(txt._val);
+	if (not view) or (view == dlffi.NULL) then
+		return self:warn{me, "text_view_new()", e};
+	end;
+	txt:set_text(tostring(get_value(rec)), -1);
+	return view;
+end;
+-- }}} Guuc:make_text()
+
+-- {{{ Guuc:make_string(...) - create a text field for to display property
+--	rec - record from table returned by sql:fetch_props()
+--	return GtkEntry
+function Guuc:make_string(rec)
+	local me, e = "make_string()";
+	local txt;
 	txt, e = gtk.entry_new();
 	if not txt then return self:warn{me, "gtk_entry_new()", e} end;
 	txt:set_text(tostring(get_value(rec)));
 	return txt;
 end;
--- }}} Guuc:make_text()
+-- }}} Guuc:make_string()
 
 -- {{{ Guuc:display_group(...) - display properties of the group
 --	group	- ID of the group in DB
@@ -1021,7 +1043,11 @@ function Guuc:display_group(group, uri)
 		if v["type"] == "list" then
 			val, e = self:make_list(v, data);
 		else
-			val, e = self:make_text(v);
+			if v["type"] == "text" then
+				val, e = self:make_text(v);
+			else
+				val, e = self:make_string(v);
+			end;
 		end;
 		if not val then return self:err{me, e} end;
 		-- create GValue to store property ID
@@ -1093,12 +1119,88 @@ end;
 -- {{{ Guuc:Url_toolUrl_Open() - "clicked" callback
 function Guuc:Url_toolUrl_Open(btn, ud)
 	local me, e = "Url_toolUrl_Open()";
+	-- {{{ read URL
 	local path;
 	path, e = read_textentry(nil, self.builder);
 	if not path then
 		return self:err{me, "read_textentry()", e};
 	end;
-	io.popen(string.format("xdg-open %q", path));
+	-- }}} read URL
+	-- {{{ argv
+	local str;
+	str, e = dlffi.Dlffi_t:new("argv", {
+		dlffi.ffi_type_pointer,	-- argv[0]
+		dlffi.ffi_type_pointer,	-- argv[1]
+		dlffi.ffi_type_pointer,	-- argv[2]
+	});
+	if (not str) or (not str["argv"]) then
+		return self:err{me, "Dlffi_t:new()", e};
+	end;
+	local argv = dlffi.dlffi_Pointer(
+		dlffi.sizeof(str["argv"]),
+		true
+	);
+	if not argv then return self:err{me, "malloc()"} end;
+	-- set argv[0]
+	dlffi.type_element(argv, str["argv"], 1, "xdg-open");
+	-- string duplicate must be GCed later
+	local argv1 = dlffi.dlffi_Pointer(
+		dlffi.type_element(argv, str["argv"], 1),
+		true
+	);
+	-- set argv[1]
+	dlffi.type_element(argv, str["argv"], 2, path);
+	-- string duplicate must be GCed later
+	local argv2 = dlffi.dlffi_Pointer(
+		dlffi.type_element(argv, str["argv"], 2),
+		true
+	);
+	-- set argv[2]
+	dlffi.type_element(argv, str["argv"], 3, dlffi.NULL);
+	-- }}} argv
+	-- {{{ get default display
+	local r;
+	r, e = gdk.display_get_default();
+	if (not r) or (r == dlffi.NULL) then
+		return self:err{
+			me,
+			"gdk_display_get_default()",
+			e
+		};
+	end;
+	r, e = gdk.display_get_default_screen(r);
+	if (not r) or (r == dlffi.NULL) then
+		return self:err{
+			me,
+			"gdk_display_get_default_screen()",
+			e
+		};
+	end;
+	-- }}} get default display
+	r, e = gdk.spawn_on_screen_with_pipes(
+		r,		-- screen
+		dlffi.NULL,	-- working_directory
+		argv,		-- argv
+		dlffi.NULL,	-- engvp
+		gtk.G_SPAWN_SEARCH_PATH +
+		0
+		,	-- flags
+		dlffi.NULL,	-- child_setup
+		dlffi.NULL,	-- user_data
+		dlffi.NULL,	-- child_pid
+		dlffi.NULL,	-- stdin
+		dlffi.NULL,	-- stdout
+		dlffi.NULL,	-- stderr
+		dlffi.NULL	-- error
+	);
+	if (not r) or (r == 0) then
+		return self:err{
+			me,
+			"gdk_spawn_on_screen_with_pipes()",
+			e
+		};
+	end;
+	print("return");
 end;
 -- }}} Guuc:Url_toolUrl_Open()
 
@@ -1173,6 +1275,7 @@ function Guuc:Url_toolUrl_Save(btn, ud)
 		val, e = get_widget_value(o);
 		if not val then return self:err{me, e} end;
 		-- write value
+		print("write", id, prop, val);
 		_, e = sql:write_value(id, prop, val);
 		if e then return self:err{me, e} end;
 	end;
