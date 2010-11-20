@@ -140,8 +140,6 @@ function Guuc:init()
 	if not win then return nil, "widget Url_win not found" end;
 	self.win = win;
 	win:connect("destroy", gtk.main_quit);
-	-- check the position of Url_hpanUrl
-	self:align_hpaned();
 	-- work with Url_treeUrl
 	local list = self.builder:get_object("Url_treeUrl");
 	if not list then return nil, "widget Url_treeUrl not found" end;
@@ -156,6 +154,8 @@ function Guuc:init()
 	if not r then return nil, e end;
 	-- finalize
 	win:show_all();
+	-- check the position of Url_hpanUrl
+	--self:align_hpaned();
 	return true;
 end;
 -- }}} Guuc:init
@@ -633,6 +633,7 @@ function Guuc:init_pop()
 end;
 -- }}} Guuc:init_pop
 
+--[[
 -- {{{ Guuc:align_hpaned() -- resize Url_hpanUrl
 function Guuc:align_hpaned()
 	local hpaned = self.builder:get_object("Url_hpanUrl");
@@ -641,10 +642,13 @@ function Guuc:align_hpaned()
 	local he = dlffi.dlffi_Pointer(dlffi.sizeof(gtk_t.gint), true);
 	self.win:get_size(wi, he);
 	wi = gtk_t.unwrap(wi, gtk_t.gint);
+	he = gtk_t.unwrap(he, gtk_t.gint);
+	print(wi, he);
 	hpaned:set_position(wi / 2);
 	return true;
 end;
 -- }}} Guuc:align_hpaned
+--]]
 
 -- {{{ Guuc:loop() -- fall into the gtk.main() loop
 function Guuc:loop()
