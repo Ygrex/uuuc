@@ -6,20 +6,6 @@ local function fundamental_shift(n)
 end;
 
 local gtk = {
-	["SELECTION_SINGLE"]	= 1,
-	["G_TYPE_INT"]		= fundamental_shift(6),
-	["G_TYPE_STRING"]	= fundamental_shift(16),
-	["EXPAND"]		= 1,
-	["SHRINK"]		= 2,
-	["FILL"]		= 4,
-	["FILE_CHOOSER_ACTION_OPEN"]		= 1,
-	["FILE_CHOOSER_ACTION_SAVE"]		= 2,
-	["FILE_CHOOSER_ACTION_SELECT_FOLDER"]	= 3,
-	["FILE_CHOOSER_ACTION_CREATE_FOLDER"]	= 3,
-	["STOCK_CANCEL"]	= "gtk-cancel",
-	["STOCK_OPEN"]		= "gtk-open",
-	["RESPONSE_CANCEL"]	= -6,
-	["RESPONSE_ACCEPT"]	= -3,
 	["G_SPAWN_LEAVE_DESCRIPTORS_OPEN"]	= 1,
 	["G_SPAWN_DO_NOT_REAP_CHILD"]		= 2,
 	["G_SPAWN_SEARCH_PATH"]			= 4,
@@ -27,6 +13,24 @@ local gtk = {
 	["G_SPAWN_STDERR_TO_DEV_NULL"]		= 16,
 	["G_SPAWN_CHILD_INHERITS_STDIN"]	= 32,
 	["G_SPAWN_FILE_AND_ARGV_ZERO"]		= 64,
+	["G_TYPE_INT"]		= fundamental_shift(6),
+	["G_TYPE_STRING"]	= fundamental_shift(16),
+	["EXPAND"]		= 1,
+	["SHRINK"]		= 2,
+	["FILL"]		= 4,
+	["FILE_CHOOSER_ACTION_OPEN"]		= 0,
+	["FILE_CHOOSER_ACTION_SAVE"]		= 1,
+	["FILE_CHOOSER_ACTION_SELECT_FOLDER"]	= 2,
+	["FILE_CHOOSER_ACTION_CREATE_FOLDER"]	= 3,
+	["SELECTION_SINGLE"]	= 1,
+	["STOCK_CANCEL"]	= "gtk-cancel",
+	["STOCK_OPEN"]		= "gtk-open",
+	["RESPONSE_CANCEL"]	= -6,
+	["RESPONSE_ACCEPT"]	= -3,
+	["WRAP_NONE"]		= 0,
+	["WRAP_CHAR"]		= 1,
+	["WRAP_WORD"]		= 2,
+	["WRAP_WORD_CHAR"]	= 3,
 };
 local gtk_mt = { __index = gtk };
 
@@ -83,6 +87,7 @@ rawset(typedef, "GtkAttachOptions"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkFileChooserAction"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkResponseType"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkSelectionMode"	, dlffi.ffi_type_sint);
+rawset(typedef, "GtkWrapMode"		, dlffi.ffi_type_sint);
 rawset(typedef, "GSpawnFlags"		, dlffi.ffi_type_sint);
 typedef["GError"] = { typedef.GQuark, typedef.guint, dlffi.ffi_type_pointer };
 assert(typedef["GError"]);
@@ -765,6 +770,11 @@ local _gtk = {
 		dlffi.ffi_type_pointer,
 		{ dlffi.ffi_type_pointer },
 		["_gen"] = true,
+	},
+	{
+		"set_wrap_mode",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer, typedef.GtkWrapMode },
 	},
 	["_inherit"] = {
 		"gtk_widget",

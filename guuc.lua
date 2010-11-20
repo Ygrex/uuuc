@@ -985,6 +985,7 @@ function Guuc:make_text(rec)
 	if (not view) or (view == dlffi.NULL) then
 		return self:warn{me, "text_view_new()", e};
 	end;
+	view:set_wrap_mode(gtk.WRAP_WORD_CHAR);
 	txt:set_text(tostring(get_value(rec)), -1);
 	return view;
 end;
@@ -1071,7 +1072,7 @@ function Guuc:display_group(group, uri)
 			return self:err{me, "gtk_entry_new()", e};
 		end;
 		tbl:attach(lbl._val, 0, 1, i, i + 1,
-			gtk.SHRINK, gtk.SHRINK,
+			0, 0,
 			0, 0
 		);
 		tbl:attach(val._val, 1, 2, i, i + 1,
@@ -1204,7 +1205,6 @@ function Guuc:Url_toolUrl_Open(btn, ud)
 			e
 		};
 	end;
-	print("return");
 end;
 -- }}} Guuc:Url_toolUrl_Open()
 
@@ -1279,7 +1279,6 @@ function Guuc:Url_toolUrl_Save(btn, ud)
 		val, e = get_widget_value(o);
 		if not val then return self:err{me, e} end;
 		-- write value
-		print("write", id, prop, val);
 		_, e = sql:write_value(id, prop, val);
 		if e then return self:err{me, e} end;
 	end;

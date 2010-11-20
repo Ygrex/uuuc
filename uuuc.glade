@@ -220,6 +220,7 @@
                         <property name="visible">True</property>
                         <property name="n_rows">2</property>
                         <property name="n_columns">2</property>
+                        <property name="row_spacing">2</property>
                         <child>
                           <placeholder/>
                         </child>
