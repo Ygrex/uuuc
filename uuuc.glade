@@ -35,21 +35,15 @@
             <property name="hscrollbar_policy">automatic</property>
             <property name="vscrollbar_policy">automatic</property>
             <child>
-              <object class="GtkViewport" id="Url_viewportUrl">
+              <object class="GtkTreeView" id="Url_treeUrl">
                 <property name="visible">True</property>
-                <property name="resize_mode">queue</property>
-                <child>
-                  <object class="GtkTreeView" id="Url_treeUrl">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="model">Url_treestoreUrl</property>
-                    <property name="headers_visible">False</property>
-                    <property name="reorderable">True</property>
-                    <property name="search_column">1</property>
-                    <property name="enable_tree_lines">True</property>
-                    <property name="tooltip_column">0</property>
-                  </object>
-                </child>
+                <property name="can_focus">True</property>
+                <property name="model">Url_treestoreUrl</property>
+                <property name="headers_visible">False</property>
+                <property name="reorderable">True</property>
+                <property name="search_column">1</property>
+                <property name="enable_tree_lines">True</property>
+                <property name="tooltip_column">0</property>
               </object>
             </child>
           </object>
