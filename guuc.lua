@@ -85,6 +85,8 @@ function Guuc:new(sql)
 		["win"] = "",			-- Url_win
 		["list"] = "",			-- Url_treeUrl
 		["cl"] = {},			-- storage of closures to cb
+		["write_parent"] = false,	-- listen Url_treeUrl for
+						-- parent-changed meta-event
 	};
 	if not o["glade_file"] then
 		return nil, "GLADE_FILE is not specified";
@@ -305,12 +307,14 @@ function Guuc:init_tree()
 	list:get_selection():set_mode(gtk.SELECTION_SINGLE);
 	local r, e = self:load_tree(list);
 	if not r then return nil, e end;
+	local model = list:get_model();
+	if not model then return nil, "get_model() returned nothing" end;
 	-- {{{ expand/collapse listeners
 	local unfold_handler = function(tree, iter, path, unfold)
 		local me = "unfold_handler()";
 		if unfold == dlffi.NULL then unfold = false
 		else unfold = true end;
-		local model = list:get_model();
+		local model = model();
 		-- {{{ get the item ID
 		local id, e;
 		id, e = g.value.new();
@@ -430,7 +434,7 @@ function Guuc:init_tree()
 		local uri;
 		uri, e = sql:fetch_uri(val);
 		if not uri then return self:err {me, "sql:fetch_uri()", e} end;
-		model = nil; iter = nil; sql = nil;
+		sql = nil;
 		-- fill out properties
 		local name;
 		name, e = self.builder:get_object("Url_txtName");
@@ -457,6 +461,97 @@ function Guuc:init_tree()
 	);
 	sel:connect("changed", self.cl["Url_treeUrl:on_changed"]);
 	-- }}} selection listener
+	-- {{{ row-parent-changed listeners
+	--	listen for the inserted item,
+	--	store its path and wait for ID will be specified;
+	--	save new parent for the URL with the given ID then
+	local reg; -- path to the changed item
+	-- {{{ chk_reg()
+	--	check, if ID is specified in the saved item and
+	--	write new parent if possible
+	local function chk_reg()
+		local iter = dlffi.dlffi_Pointer(
+			dlffi.sizeof(gtk_t["GtkTreeIter"]),
+			true
+		);
+		-- {{{ get_id(...) -- find ID of the item
+		--	path - GtkTreePath to the item
+		local function get_id(path)
+			local r;
+			r = model:get_iter(iter, path);
+			if (not r) or (r == 0) then return end;
+			local id = g.value.new();
+			if not id then return end;
+			model:get_value(iter, 0, id);
+			return g.value_get_int(id);
+		end;
+		-- }}} get_id()
+		-- get changed item ID
+		local id = tonumber(get_id(reg));
+		if (not id) or (id < 1) then
+			-- probably ID is not set yet
+			return;
+		end;
+		-- get parent item ID
+		local par;
+		r = gtk.tree_path_get_depth(reg);
+		if r and (r > 1) then
+			r = gtk.tree_path_up(reg);
+		else
+			r = nil;
+		end;
+		if r and (r ~= 0) then par = tonumber(get_id(reg)) end;
+		gtk.tree_path_free(reg);
+		reg = nil;
+		-- save modifications
+		local sql = self.sql:new(self.sql.filename);
+		if not sql then return end;
+		sql:write_parent(id, par);
+	end;
+	-- }}} chk_reg()
+	-- {{{ onInsert(...) - save path to the inserted item
+	local function onInsert(model, path, iter, ud)
+		if not self["write_parent"] then return end;
+		reg = gtk.tree_path_copy(path);
+		if reg then chk_reg() end;
+	end;
+	-- }}} onInsert()
+	-- {{{ onChange(...) - check the saved item
+	local function onChange(model, path, iter, ud)
+		if not reg then return end;
+		chk_reg();
+	end;
+	-- }}} onChange()
+	onInsert, e = dlffi.load(
+		onInsert,
+		dlffi.ffi_type_void,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		}
+	);
+	if onInsert then
+		onChange, e = dlffi.load(
+			onChange,
+			dlffi.ffi_type_void,
+			{
+				dlffi.ffi_type_pointer,
+				dlffi.ffi_type_pointer,
+				dlffi.ffi_type_pointer,
+				dlffi.ffi_type_pointer,
+			}
+		);
+	end;
+	if not (onInsert and onChange) then return nil, e end;
+	self.cl["row_inserted_Url_treeUrl"] = onInsert;
+	self.cl["row_changed_Url_treeUrl"] = onChange;
+	model:connect("row-inserted", onInsert, dlffi.NULL);
+	model:connect("row-changed", onChange, dlffi.NULL);
+	-- unlock monitoring
+	self["write_parent"] = true;
+	-- }}} row-parent-changed listeners
 	return true;
 end;
 -- }}} Guuc:init_tree
@@ -477,7 +572,10 @@ function Guuc:item_new(id, name, parent, unfold)
 	);
 	if not iter then return self:warn{me, "GtkTreeIter init failure"} end;
 	if not parent then parent = dlffi.NULL end;
+	local listen = self["write_parent"];
+	self["write_parent"] = false;
 	model:append(iter, parent);
+	self["write_parent"] = listen;
 	local gval_id = dlffi.dlffi_Pointer(256, true);
 	g.value_init(bzero(gval_id, 256), gtk.G_TYPE_INT);
 	local gval_unfold = dlffi.dlffi_Pointer(256, true);

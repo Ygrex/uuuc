@@ -731,6 +731,26 @@ function Sqlite3:write_uri(id, uri, misc, group)
 end;
 -- }}} Sqlite3:write_uri()
 
+-- {{{ Sqlite3:write_parent(...) - alter item's parent
+--	id	- item's ID
+--	par	- new parent ID
+function Sqlite3:write_parent(id, par)
+	par = tonumber(par);
+	if not par then
+		par = "NULL";
+	else
+		par = tostring(par);
+	end;
+	local que = string.format(
+		[[UPDATE `%s` SET `parent` = %s WHERE `id` = %d]],
+		self.tbl.url,
+		par,
+		tonumber(id)
+	);
+	return self:query(que);
+end;
+-- }}} Sqlite3:write_parent()
+
 return {
 	["Sqlite3"] = Sqlite3,
 };

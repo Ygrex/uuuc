@@ -784,6 +784,42 @@ local _gtk = {
 	["_prefix"] = "gtk_text_view",
 },
 -- }}} gtk_text_view
+-- {{{ gtk_tree_path
+{
+	{
+		"get_type",
+		typedef.GType,
+		{ },
+	},
+	{
+		"to_string",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer },
+	},
+	{
+		"up",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer },
+	},
+	{
+		"copy",
+		dlffi.ffi_type_pointer,
+		{ dlffi.ffi_type_pointer },
+	},
+	{
+		"get_depth",
+		typedef.gint,
+		{ dlffi.ffi_type_pointer },
+	},
+	{
+		"free",
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer },
+	},
+	-- prefix for any symbol name in the library
+	["_prefix"] = "gtk_tree_path",
+},
+-- }}} gtk_tree_path
 -- {{{ gtk_tree_view
 {
 	{
