@@ -81,6 +81,7 @@ function Guuc:new(sql)
 	local o = {
 		["sql"] = sql,			-- Sqlite3 connector
 		["glade_file"] = GLADE_FILE,	-- glade file to load
+		["exec"] = tostring(EXEC),	-- tool to open any URL
 		["builder"] = "",		-- GTK builder
 		["win"] = "",			-- Url_win
 		["list"] = "",			-- Url_treeUrl
@@ -1245,7 +1246,7 @@ function Guuc:Url_toolUrl_Open(btn, ud)
 	);
 	if not argv then return self:err{me, "malloc()"} end;
 	-- set argv[0]
-	dlffi.type_element(argv, str["argv"], 1, "xdg-open");
+	dlffi.type_element(argv, str["argv"], 1, self.exec);
 	-- string duplicate must be GCed later
 	local argv1 = dlffi.dlffi_Pointer(
 		dlffi.type_element(argv, str["argv"], 1),

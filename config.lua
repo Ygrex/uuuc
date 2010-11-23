@@ -10,7 +10,7 @@ LIBS = {
 --]]
 -- DB name
 DB = "db.sqlite3";
--- tables to use
+-- names of tables to use
 TBL = {
 	["url"] = "url",
 	["group"] = "group",
@@ -22,5 +22,9 @@ TBL = {
 --[[
 	GUI
 --]]
+-- GTK+ builder file
 GLADE_FILE = "uuuc.glade";
+
+-- tool to open any URL
+EXEC = "xdg-open";
 
