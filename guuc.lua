@@ -38,7 +38,7 @@ local function fill_model(model, data, header)
 	local e;
 	-- if model given or list view
 	r, e = g.type_check_instance_is_a(
-		(type(model) == "table") and model._val or model,
+		model,
 		gtk.tree_model_get_type()
 	);
 	if e then
@@ -78,6 +78,16 @@ function Guuc:new(sql)
 	if not sql then
 		return nil, "Sqlite3 connector must be specified";
 	end;
+	local pix;
+	if type(PIX) ~= "table" then
+		pix = {32, 32};
+	else
+		pix = {PIX[0], PIX[1]};
+		for i = 1, #pix, 1 do
+			pix[i] = tonumber(pix[i]);
+			if not pix[i] then pix[i] = 32 end;
+		end;
+	end;
 	local o = {
 		["sql"] = sql,			-- Sqlite3 connector
 		["glade_file"] = GLADE_FILE,	-- glade file to load
@@ -88,6 +98,7 @@ function Guuc:new(sql)
 		["cl"] = {},			-- storage of closures to cb
 		["write_parent"] = false,	-- listen Url_treeUrl for
 						-- parent-changed meta-event
+		["pix"] = pix,
 	};
 	if not o["glade_file"] then
 		return nil, "GLADE_FILE is not specified";
@@ -254,7 +265,13 @@ function Guuc:load_tree(list)
 			end;
 			-- }}} find the parent's iter
 			-- {{{ display the item
-			local iter, e = self:item_new(v[1], v[2], par_iter, v[3]);
+			local iter, e = self:item_new(
+				v[1],
+				v[2],
+				par_iter,
+				v[3],
+				"alacarte.png"
+			);
 			if not iter then
 				return nil, string.format(
 					"load_tree(): append error:: %s",
@@ -290,18 +307,34 @@ function Guuc:init_tree()
 	local list = self.list;
 	if not list then return nil, "self.list is undefined" end;
 	-- {{{ init columns
-	local renderer = gtk.cell_renderer_text_new();
+	local renderer;
+	renderer = gtk.cell_renderer_pixbuf_new();
+	if not renderer then return nil, "GtkCellRendererPixbuf failure" end;
+	local col;
+	col = gtk.tree_view_column_new_with_attributes(
+		"Icon",
+		renderer,
+		"pixbuf", 3,
+		dlffi.NULL
+	);
+	if not col then return nil, "GtkTreeViewColumn failure" end;
+	local r;
+	r = list:append_column(col);
+	if tonumber(r) ~= 1 then
+		return nil, "GtkTreeView column appending failed";
+	end;
+	renderer = gtk.cell_renderer_text_new();
 	if not renderer then return nil, "GtkCellRendererText failure" end;
-	local col = gtk.tree_view_column_new_with_attributes(
+	col = gtk.tree_view_column_new_with_attributes(
 		"URI",
-		type(renderer) == "table" and renderer._val or renderer,
+		renderer,
 		"text", 1,
 		dlffi.NULL
 	);
 	if not col then return nil, "GtkTreeViewColumn failure" end;
 	col:set_resizable(true);
-	local r = list:append_column(col._val);
-	if tonumber(r) ~= 1 then
+	r = list:append_column(col);
+	if tonumber(r) ~= 2 then
 		return nil, "GtkTreeView column appending failed";
 	end;
 	-- }}} init columns
@@ -420,8 +453,10 @@ function Guuc:init_tree()
 	if not sel then
 		return nil, "list:get_selection() failed"
 	end;
-	local on_changed = function(obj, ud)
-		local me, e = "on_changed()";
+	-- {{{ changed()
+	--	function to display selected item
+	local changed = function()
+		local me, e = "changed()";
 		-- init ODBC
 		local sql;
 		sql, e = self.sql:new(self.sql.filename);
@@ -456,11 +491,12 @@ function Guuc:init_tree()
 		self:select_group(uri["group"], uri["id"]);
 		return true;
 	end;
-	self.cl["Url_treeUrl:on_changed"] = dlffi.load(
-		on_changed, dlffi.ffi_type_void,
+	-- }}} changed()
+	self.cl["Url_treeUrl:changed"] = dlffi.load(
+		changed, dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer }
 	);
-	sel:connect("changed", self.cl["Url_treeUrl:on_changed"]);
+	sel:connect("changed", self.cl["Url_treeUrl:changed"]);
 	-- }}} selection listener
 	-- {{{ row-parent-changed listeners
 	--	listen for the inserted item,
@@ -546,8 +582,8 @@ function Guuc:init_tree()
 		);
 	end;
 	if not (onInsert and onChange) then return nil, e end;
-	self.cl["row_inserted_Url_treeUrl"] = onInsert;
-	self.cl["row_changed_Url_treeUrl"] = onChange;
+	self.cl["Url_treeUrl:row-inserted"] = onInsert;
+	self.cl["Url_treeUrl:row-changed"] = onChange;
 	model:connect("row-inserted", onInsert, dlffi.NULL);
 	model:connect("row-changed", onChange, dlffi.NULL);
 	-- unlock monitoring
@@ -557,9 +593,14 @@ function Guuc:init_tree()
 end;
 -- }}} Guuc:init_tree
 
--- {{{ Guuc:item_new(id, name, parent, unfold) -- add new item to Url_treeUrl
+-- {{{ Guuc:item_new(...) -- add new item to Url_treeUrl
+--	id	- item ID
+--	name	- item name
+--	parent	- parent item path
+--	unfold	- if the item expanded (boolean or number)
+--	file	- path to pixbuf file
 --	return iterator on success
-function Guuc:item_new(id, name, parent, unfold)
+function Guuc:item_new(id, name, parent, unfold, file)
 	local me = "item_new()";
 	id = tonumber(id);
 	if not id then return self:warn{me, "invalid ID specified"} end;
@@ -577,12 +618,10 @@ function Guuc:item_new(id, name, parent, unfold)
 	self["write_parent"] = false;
 	model:append(iter, parent);
 	self["write_parent"] = listen;
-	local gval_id = dlffi.dlffi_Pointer(256, true);
-	g.value_init(bzero(gval_id, 256), gtk.G_TYPE_INT);
-	local gval_unfold = dlffi.dlffi_Pointer(256, true);
-	g.value_init(bzero(gval_unfold, 256), gtk.G_TYPE_INT);
-	local gval_name = dlffi.dlffi_Pointer(256, true);
-	g.value_init(bzero(gval_name, 256), gtk.G_TYPE_STRING);
+	local gval_id = g.value.new(gtk.G_TYPE_INT);
+	local gval_unfold = g.value.new(gtk.G_TYPE_INT);
+	local gval_name = g.value.new(gtk.G_TYPE_STRING);
+	local gval_pix = g.value.new(gtk.GDK_TYPE_PIXBUF);
 	if not tonumber(unfold) then
 		if unfold then
 			unfold = 1;
@@ -591,14 +630,24 @@ function Guuc:item_new(id, name, parent, unfold)
 		end;
 	end;
 	g.value_set_int(gval_id, id);
-	local _id = g.value_get_int(gval_id);
 	g.value_set_int(gval_unfold, unfold);
-	local _unfold = g.value_get_int(gval_unfold);
 	g.value_set_string(gval_name, name);
-	local _name = dlffi.dlffi_Pointer(g.value_get_string(gval_name)):tostring();
+	local err, pixbuf;
+	if file then
+		err = dlffi.dlffi_Pointer();
+		pixbuf = gdk.pixbuf_new_from_file_at_size(
+			tostring(file),
+			self.pix[1], self.pix[2],
+			dlffi.dlffi_Pointer(err)
+		);
+	end;
 	model:set_value(iter, 0, gval_id);
 	model:set_value(iter, 1, gval_name);
 	model:set_value(iter, 2, gval_unfold);
+	if err == dlffi.dlffi_Pointer() then
+		g.value_take_object(gval_pix, pixbuf);
+		model:set_value(iter, 3, gval_pix);
+	end;
 	return iter;
 end;
 -- }}} Guuc:item_new
@@ -993,7 +1042,6 @@ local function get_widget_value(widget)
 			-- new item selected
 			return self:warn{me, "new item selected"};
 		end;
-		if type(iter) == "table" then iter = iter._val end;
 		widget, e = widget:get_model();
 		if not widget then return self:warn{me, "get_model()", e} end;
 		local val = g.value.new();
@@ -1023,7 +1071,7 @@ function Guuc:make_list(rec, data)
 	model, e = gtk.list_store_newv(2, cols);
 	if not model then return self:warn{me, "gtk_list_store_newv()", e} end;
 	local lst;
-	lst, e = gtk.combo_box_entry_new_with_model(model._val, 1);
+	lst, e = gtk.combo_box_entry_new_with_model(model, 1);
 	if not lst then
 		model:destroy();
 		return self:warn{
@@ -1080,7 +1128,7 @@ function Guuc:make_text(rec)
 		return self:warn{me, "text_buffer_new()", e};
 	end;
 	local view;
-	view, e = gtk.text_view_new_with_buffer(txt._val);
+	view, e = gtk.text_view_new_with_buffer(txt);
 	if (not view) or (view == dlffi.NULL) then
 		return self:warn{me, "text_view_new()", e};
 	end;
@@ -1160,7 +1208,7 @@ function Guuc:display_group(group, uri)
 			g.value_init(gid, gtk.G_TYPE_INT);
 			g.value_set_int(gid, tonumber(v["id"]));
 			g.object_set_data(
-				(type(val) == "table") and val._val or val,
+				val,
 				"id",
 				gid
 			);
@@ -1170,11 +1218,11 @@ function Guuc:display_group(group, uri)
 		if not lbl then
 			return self:err{me, "gtk_entry_new()", e};
 		end;
-		tbl:attach(lbl._val, 0, 1, i, i + 1,
+		tbl:attach(lbl, 0, 1, i, i + 1,
 			0, 0,
 			0, 0
 		);
-		tbl:attach(val._val, 1, 2, i, i + 1,
+		tbl:attach(val, 1, 2, i, i + 1,
 			gtk.FILL + gtk.EXPAND, gtk.SHRINK,
 			0, 0
 		);
@@ -1193,7 +1241,6 @@ function Guuc:Url_toolName_Local(btn, ud)
 	local me, e = "Url_toolUrl_Open()";
 	local path;
 	local dialog = self.win;
-	if type(dialog) == "table" then dialog = dialog._val end;
 	dialog, e = gtk.file_chooser_dialog_new(
 		"Choose file",
 		dialog,
@@ -1205,7 +1252,7 @@ function Guuc:Url_toolName_Local(btn, ud)
 		dlffi.NULL
 	);
 	if e then return self:err{me, "dialog_new()", e} end;
-	path, e = gtk.dialog_run(dialog._val);
+	path, e = gtk.dialog_run(dialog);
 	if e then return self:err{me, "dialog_run()", e} end;
 	if path == gtk.RESPONSE_ACCEPT then repeat
 		path, e = dialog:get_uri();
@@ -1320,7 +1367,7 @@ function Guuc:Url_toolUrl_Save(btn, ud)
 	if not urm then return self:err{me, "get_model()", e} end;
 	-- {{{ find URI ID
 	local id = g.value.new();
-	urm:get_value(type(uri) == "table" and uri._val or uri, 0, id);
+	urm:get_value(uri, 0, id);
 	id = g.value_get_int(id);
 	-- }}} find URI ID
 	-- {{{ gather URI info

@@ -1,6 +1,7 @@
 --[[
 	shared libraries names
 --]]
+
 LIBS = {
 	["sqlite3"] = "libsqlite3.so",
 };
@@ -8,8 +9,10 @@ LIBS = {
 --[[
 	database
 --]]
+
 -- DB name
 DB = "db.sqlite3";
+
 -- names of tables to use
 TBL = {
 	["url"] = "url",
@@ -22,8 +25,14 @@ TBL = {
 --[[
 	GUI
 --]]
+
 -- GTK+ builder file
 GLADE_FILE = "uuuc.glade";
+
+-- width x height of pics
+-- aspect ratio will be preserved
+-- set {-1, -1} for original size
+PIX = {32, 32};
 
 -- tool to open any URL
 EXEC = "xdg-open";

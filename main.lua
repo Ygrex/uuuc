@@ -1,7 +1,5 @@
 #!/usr/bin/env lua5.1
 
---require "rex_pcre";
-
 -- load the config
 dofile("config.lua");
 
@@ -24,6 +22,7 @@ end;
 local r = main();
 main = nil;
 sqlite3 = nil;
+guuc = nil;
 collectgarbage("collect");
 --os.exit(r);
 return r;

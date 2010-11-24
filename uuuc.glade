@@ -2,6 +2,14 @@
 <interface>
   <requires lib="gtk+" version="2.16"/>
   <!-- interface-naming-policy project-wide -->
+  <object class="GtkListStore" id="Url_liststoreGroup">
+    <columns>
+      <!-- column-name id -->
+      <column type="gint"/>
+      <!-- column-name name -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkTreeStore" id="Url_treestoreUrl">
     <columns>
       <!-- column-name id -->
@@ -10,14 +18,8 @@
       <column type="gchararray"/>
       <!-- column-name unfold -->
       <column type="gint"/>
-    </columns>
-  </object>
-  <object class="GtkListStore" id="Url_liststoreGroup">
-    <columns>
-      <!-- column-name id -->
-      <column type="gint"/>
-      <!-- column-name name -->
-      <column type="gchararray"/>
+      <!-- column-name pic -->
+      <column type="GdkPixbuf"/>
     </columns>
   </object>
   <object class="GtkWindow" id="Url_win">

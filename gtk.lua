@@ -15,6 +15,10 @@ local gtk = {
 	["G_SPAWN_FILE_AND_ARGV_ZERO"]		= 64,
 	["G_TYPE_INT"]		= fundamental_shift(6),
 	["G_TYPE_STRING"]	= fundamental_shift(16),
+	["G_TYPE_POINTER"]	= fundamental_shift(17),
+	["G_TYPE_VARIANT"]	= fundamental_shift(21),
+	["DIALOG_MODAL"]			= 1,
+	["DIALOG_DESTROY_WITH_PARENT"]		= 2,
 	["EXPAND"]		= 1,
 	["SHRINK"]		= 2,
 	["FILL"]		= 4,
@@ -24,6 +28,7 @@ local gtk = {
 	["FILE_CHOOSER_ACTION_CREATE_FOLDER"]	= 3,
 	["SELECTION_SINGLE"]	= 1,
 	["STOCK_CANCEL"]	= "gtk-cancel",
+	["STOCK_OK"]		= "gtk-ok",
 	["STOCK_OPEN"]		= "gtk-open",
 	["RESPONSE_CANCEL"]	= -6,
 	["RESPONSE_ACCEPT"]	= -3,
@@ -84,6 +89,7 @@ rawset(typedef, "GType"			, dlffi.ffi_type_size_t);
 rawset(typedef, "GdkEventType"		, dlffi.ffi_type_sint);
 rawset(typedef, "GConnectFlags"		, dlffi.ffi_type_sint);
 rawset(typedef, "GtkAttachOptions"	, dlffi.ffi_type_sint);
+rawset(typedef, "GtkDialogFlags"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkFileChooserAction"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkResponseType"	, dlffi.ffi_type_sint);
 rawset(typedef, "GtkSelectionMode"	, dlffi.ffi_type_sint);
@@ -255,6 +261,17 @@ local _gtk = {
 	["_prefix"] = "gtk_cell_renderer_text",
 },
 -- }}} gtk_cell_renderer_text
+-- {{{ gtk_cell_renderer_pixbuf
+{
+	{
+		"new",
+		dlffi.ffi_type_pointer,
+		{ },
+	},
+	-- prefix for any symbol name in the library
+	["_prefix"] = "gtk_cell_renderer_pixbuf",
+},
+-- }}} gtk_cell_renderer_pixbuf
 -- {{{ gtk_combo_box_entry
 {
 	{
@@ -294,7 +311,7 @@ local _gtk = {
 		{
 			dlffi.ffi_type_pointer,
 		},
-		["_gen"] = "gtk_tree_model",
+		["_gen"] = true,
 	},
 	{
 		"set_active",
@@ -486,6 +503,16 @@ local _gtk = {
 		"get_selected",
 		typedef.gboolean,
 		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"set_select_function",
+		typedef.gboolean,
+		{
+			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
@@ -812,6 +839,11 @@ local _gtk = {
 		{ dlffi.ffi_type_pointer },
 	},
 	{
+		"compare",
+		typedef.gint,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer },
+	},
+	{
 		"free",
 		dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer },
@@ -858,7 +890,7 @@ local _gtk = {
 		{
 			dlffi.ffi_type_pointer,
 		},
-		["_gen"] = "gtk_tree_model",
+		["_gen"] = true,
 	},
 	{
 		"get_selection",
@@ -1027,12 +1059,32 @@ local _gtk = {
 -- {{{ gtk_dialog
 {
 	{
+		"get_type",
+		typedef.GType,
+		{ },
+	},
+	{
 		"run",
 		typedef.gint,
 		{
 			dlffi.ffi_type_pointer,
 		},
 		
+	},
+	{
+		"new_with_buttons",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,		-- title
+			dlffi.ffi_type_pointer,		-- parent
+			typedef["GtkDialogFlags"],	-- flags
+			dlffi.ffi_type_pointer,		-- first_button_text
+			typedef["GtkResponseType"],	-- first response
+			dlffi.ffi_type_pointer,		-- second text
+			typedef["GtkResponseType"],	-- second response
+			dlffi.ffi_type_pointer,		-- NULL
+		},
+		["_gen"] = "gtk_dialog",
 	},
 	["_inherit"] = {
 		"gtk_widget",
@@ -1088,6 +1140,21 @@ local _gtk = {
 		{ dlffi.ffi_type_pointer },
 	},
 	{
+		"value_set_pointer",
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer },
+	},
+	{
+		"value_set_pointer",
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer },
+	},
+	{
+		"value_take_object",
+		dlffi.ffi_type_void,
+		{ dlffi.ffi_type_pointer, dlffi.ffi_type_pointer },
+	},
+	{
 		"value_set_int",
 		dlffi.ffi_type_void,
 		{ dlffi.ffi_type_pointer, typedef.gint },
@@ -1116,6 +1183,13 @@ local _gtk = {
 		{
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_pointer,
+		},
+	},
+	{
+		"object_unref",
+		dlffi.ffi_type_void,
+		{
 			dlffi.ffi_type_pointer,
 		},
 	},
@@ -1187,6 +1261,21 @@ local _gtk = {
 			dlffi.ffi_type_pointer,	-- error
 		},
 	},
+	{
+		"pixbuf_get_type",
+		typedef["GType"],
+		{},
+	},
+	{
+		"pixbuf_new_from_file_at_size",
+		dlffi.ffi_type_pointer,
+		{
+			dlffi.ffi_type_pointer,
+			dlffi.ffi_type_sint,
+			dlffi.ffi_type_sint,
+			dlffi.ffi_type_pointer,
+		},
+	},
 	["_prefix"] = "gdk",
 },
 -- }}} gdk
@@ -1218,12 +1307,16 @@ end;
 -- }}} find_inherit()
 
 -- {{{ get_object(...) - construct proxy for the object
---	o - GObject instance (userdata)
+--	o	- GObject instance (userdata)
+--	pref	- prefix for functions if you know it
 --	Return:
 --		Dlffi (table) of the appropriate class
-local function get_object(o)
+local function get_object(o, pref)
 	if not o then
 		return nil, "get_object(): invalid object specified";
+	end;
+	if type(pref) == "string" then
+		return dlffi.Dlffi:new(find_inherit(pref), o);
 	end;
 	-- iterate through all headers
 	for i = 1, #_gtk, 1 do
@@ -1290,7 +1383,7 @@ local function load_libs()
 				-- create constructor
 				local cfunc = r;
 				local wrapper = function(...)
-					return get_object(cfunc(...));
+					return get_object(cfunc(...), k);
 				end;
 				-- substitue the symbol with proxy
 				r = wrapper;
@@ -1350,7 +1443,7 @@ local Builder = { _type = "object" };
 
 -- {{{ Builder:get_object(...) - overrides gtk_builder_get_object
 function Builder:get_object(name)
-	local o, e = gtk.builder_get_object(self._val, name);
+	local o, e = gtk.builder_get_object(self, name);
 	if e then return nil, "get_object(): " .. tostring(e) end;
 	return get_object(o);
 end;
@@ -1368,7 +1461,6 @@ end;
 
 -- {{{ g_signal_connect(...) - emulate macro for g_signal_connect
 local g_signal_connect = function(o, sig, hdlr, data)
-	if type(o) == "table" then o = o["_val"] end;
 	if not o then return nil, "invalid instance" end;
 	if not data then data = dlffi.NULL end;
 	return _gtk.g_signal_connect_data(o, sig, hdlr, data, dlffi.NULL, 0);
@@ -1432,6 +1524,8 @@ local function init()
 	local r, e = gtk.init_check(dlffi.NULL, dlffi.NULL);
 	assert(not e, e);
 	if r == 0 then return nil, "gtk_init_check() returned FALSE" end;
+	-- init some special types
+	gtk["GDK_TYPE_PIXBUF"] = _gtk.gdk_pixbuf_get_type();
 	return true;
 end;
 -- }}} init()
