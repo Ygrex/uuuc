@@ -99,6 +99,8 @@ function Guuc:new(sql)
 		["write_parent"] = false,	-- listen Url_treeUrl for
 						-- parent-changed meta-event
 		["pix"] = pix,
+		["pixdir"] = tostring(PIXDIR),
+		["pix_none"] = tostring(PIX_NONE),
 	};
 	if not o["glade_file"] then
 		return nil, "GLADE_FILE is not specified";
@@ -239,6 +241,9 @@ function Guuc:load_tree(list)
 		for i = 1, #row, 1 do
 			-- {{{ get the row
 			local v = row[i];
+			-- place the actual icon to the 4th position
+			if v[4] == dlffi.NULL then v[4] = v[5] end;
+			if v[4] == dlffi.NULL then v[4] = nil end;
 			if seen[v[1]] then
 				return nil, string.format(
 					"load_tree(): recursion on ID %s",
@@ -270,7 +275,7 @@ function Guuc:load_tree(list)
 				v[2],
 				par_iter,
 				v[3],
-				"alacarte.png"
+				v[4]
 			);
 			if not iter then
 				return nil, string.format(
@@ -633,8 +638,14 @@ function Guuc:item_new(id, name, parent, unfold, file)
 	g.value_set_int(gval_unfold, unfold);
 	g.value_set_string(gval_name, name);
 	local err, pixbuf;
+	if not file then file = self["pix_none"] end;
 	if file then
 		err = dlffi.dlffi_Pointer();
+		file = tostring(file);
+		if file:find("[.~]*[/]") ~= 1 then
+			-- relative to PIXDIR path given
+			file = string.format("%s/%s", self.pixdir, file);
+		end;
 		pixbuf = gdk.pixbuf_new_from_file_at_size(
 			tostring(file),
 			self.pix[1], self.pix[2],
@@ -647,6 +658,8 @@ function Guuc:item_new(id, name, parent, unfold, file)
 	if err == dlffi.dlffi_Pointer() then
 		g.value_take_object(gval_pix, pixbuf);
 		model:set_value(iter, 3, gval_pix);
+	else
+		g.error_free(err);
 	end;
 	return iter;
 end;

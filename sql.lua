@@ -143,6 +143,8 @@ local Sqlite3 = {
 				["path"]	= "VARCHAR(4096)",
 				["query"]	= "VARCHAR(4096)",
 				["fragment"]	= "VARCHAR(4096)",
+				-- icon
+				["pic"]		= "VARCHAR(256)",
 				-- group of URI's properties
 				["group"]	= "INTEGER DEFAULT NULL",
 				-- URI's comments
@@ -153,6 +155,8 @@ local Sqlite3 = {
 				["id"]		= "INTEGER",
 				["name"]	=
 					"VARCHAR(128) DEFAULT 'New Group'",
+				["pic"]		=
+					"VARCHAR(256) DEFAULT 'cabbox.png'",
 			},
 		-- properties' types
 		["prop"]	= {
@@ -450,6 +454,27 @@ function Sqlite3:insert_uri(argv)
 end;
 -- }}} Sqlite3:insert_uri
 
+-- {{{ field_list(...) - compose field list for SQL
+--	tbl	- table name, maybe nil
+--	fields	- table with fields names
+--	Return: string in format `t`.`a`, `t`.`b` etc.
+local field_list = function(tbl, fields)
+	if tbl then
+		tbl = string.format("`%s`.", tbl);
+	else
+		tbl = "";
+	end;
+	local r = {};
+	for i = 1, #fields, 1 do
+		table.insert(
+			r,
+			string.format("%s`%s`", tbl, tostring(fields[i]))
+		);
+	end;
+	return table.concat(r, ",");
+end;
+-- }}} field_list()
+
 -- {{{ Sqlite3:fetch_uris(parent) -- return URI list
 function Sqlite3:fetch_uris(parent)
 	if not parent then
@@ -460,9 +485,25 @@ function Sqlite3:fetch_uris(parent)
 		parent = "= " .. tostring(parent);
 	end;
 	local que = string.format(
-[[SELECT `id`,`misc`,`unfold` FROM `%s` WHERE `parent` %s ORDER BY `misc`]],
-		self.tbl.url,
-		tostring(parent)
+		[[SELECT %s, %s FROM `%s` ]] ..
+			[[LEFT JOIN `%s` ]] ..
+			[[ON `%s`.`group` = `%s`.`id` ]] ..
+		[[WHERE `%s`.`parent` %s ]] ..
+		[[ORDER BY `%s`.`misc`]],
+		field_list(
+			self.tbl.url,
+			{ "id", "misc", "unfold", "pic" }
+		),
+		field_list(
+			self.tbl.group,
+			{ "pic" }
+		),
+		self.tbl.url,		-- FROM
+		self.tbl.group,		-- JOIN
+		self.tbl.url,		-- ON
+		self.tbl.group,		-- ON
+		self.tbl.url, tostring(parent),	-- WHERE
+		self.tbl.url		-- ORDER
 	);
 	return self:query(que);
 end;
@@ -483,16 +524,33 @@ function Sqlite3:fetch_uri(id)
 	id = tonumber(id);
 	if not id then return nil, "fetch_uri(): Invalid ID" end;
 	local que = string.format(
-		[[SELECT %s%s%s FROM `%s` WHERE `id` = %d]],
-		"`id`,`misc`,`group`,",
-			"`scheme`,`delim`,`userinfo`,",
-			"`regname`,`path`,`query`,`fragment`",
-		self.tbl.url,
-		id
+		[[SELECT %s, %s FROM `%s` ]] ..
+			[[LEFT JOIN `%s` ]] ..
+			[[ON `%s`.`group` = `%s`.`id` ]] ..
+		[[WHERE `%s`.`id` = %d]],
+		field_list(
+			self.tbl.url,
+			{
+				"id", "misc", "group",
+				"scheme", "delim", "userinfo",
+				"regname", "path", "query", "fragment",
+				"pic"
+			}
+		),
+		field_list(
+			self.tbl.group,
+			{ "pic" }
+		),
+		self.tbl.url,	-- FROM
+		self.tbl.group,	-- JOIN
+		self.tbl.url,	-- ON
+		self.tbl.group,	-- ON
+		self.tbl.url, id	-- WHERE
 	);
 	local row = self:query(que);
 	if type(row) ~= "table" then return nil end;
 	row = row[1];
+	if row[11] == dlffi.NULL then row[11] = row[12] end;
 	row = {
 		["id"]		= row[1],
 		["misc"]	= row[2],
@@ -504,6 +562,7 @@ function Sqlite3:fetch_uri(id)
 		["path"]	= row[8],
 		["query"]	= row[9],
 		["fragment"]	= row[10],
+		["pic"]		= row[11],
 	};
 	-- FIXME dummy URI
 	row["uri"] = row["path"];
