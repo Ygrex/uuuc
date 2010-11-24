@@ -512,7 +512,7 @@ end;
 -- {{{ Sqlite3:fetch_groups() -- return list of groups
 function Sqlite3:fetch_groups()
 	local que = string.format(
-		[[SELECT `id`,`name` FROM `%s` ORDER BY `name`]],
+		[[SELECT `id`,`name`,`pic` FROM `%s` ORDER BY `name`]],
 		self.tbl.group
 	);
 	return self:query(que);
