@@ -8,7 +8,7 @@ local dlffi = require("dlffi");
 local sqlite3 = {
 {
 	"open",
-	dlffi.ffi_type_sint,
+	{ ret = dlffi.ffi_type_sint, 2 },
 	{
 		dlffi.ffi_type_pointer,	-- filename
 		dlffi.ffi_type_pointer,	-- ppDb
@@ -26,7 +26,7 @@ local sqlite3 = {
 },
 {
 	"prepare_v2",
-	dlffi.ffi_type_sint,
+	{ ret = dlffi.ffi_type_sint, 4 },
 	{
 		dlffi.ffi_type_pointer,	-- db
 		dlffi.ffi_type_pointer,	-- zSql
@@ -257,18 +257,9 @@ local Sqlite3 = {
 
 -- {{{ Sqlite3:new(filename)	-- constructor
 function Sqlite3:new(filename)
-	local ppDb = dlffi.dlffi_Pointer();
-	local r, e = sqlite3.open(filename, dlffi.dlffi_Pointer(ppDb));
-	if r ~= 0 then
-		if r == nil then return nil, e end;
-		return nil, string.format(
-			"sqlite3_open() returned %s",
-			tostring(r)
-		);
-	end;
 	local o, e = dlffi.Dlffi:new(
 		{Sqlite3, sqlite3},
-		ppDb,
+		select(3, sqlite3.open(filename, dlffi.NULL)),
 		sqlite3.close,
 		nil	-- no constructors in sqlite3
 	);
@@ -313,20 +304,16 @@ end;
 function Sqlite3:query(stmt)
 	local stmt = tostring(stmt);
 	if not stmt then stmt = "" end;
-	local prep = dlffi.dlffi_Pointer();
-	local errmsg = "dlffi_Pointer() failed";
-	if not prep then return nil, errmsg end;
 	-- compile the statement
-	local r, e = self:prepare_v2(
+	local _, r, prep = self:prepare_v2(
 		stmt,
 		#stmt + 1,
-		dlffi.dlffi_Pointer(prep),
+		dlffi.NULL,	-- wrapped value
 		dlffi.NULL	-- only the 1st statement will be compiled
 	);
 	if r ~= sqlite3.OK then
-		if not r then return nil, e end;
 		return nil, string.format(
-			"sqlite3_prepare_v2() returned %s",
+			"sqlite3_prepare_v2() returned: %s",
 			tostring(r)
 		);
 	end;

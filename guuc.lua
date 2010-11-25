@@ -10,21 +10,6 @@ local gtk = gtk.gtk;
 local Guuc = { _type = "object" };
 local Guuc_mt = { __index = Guuc };
 
--- {{{ bzero(...) - required to initialize GValue s
-local _bzero, e = dlffi.load("libc.so.6", "bzero", dlffi.ffi_type_void,
-	{
-		dlffi.ffi_type_pointer,
-		dlffi.ffi_type_size_t,
-	}
-);
-assert(_bzero, e);
-local bzero = function(p, n)
-	local r, e = _bzero(p, n);
-	if e then return nil, e end;
-	return p;
-end;
--- }}} bzero()
-
 -- {{{ fill_model(...) - fill GtkTreeModel with given data
 --	model	- model or list view with model
 --	data	- data table
@@ -51,10 +36,7 @@ local function fill_model(model, data, header)
 	end;
 	-- initialize iterator
 	local iter;
-	iter, e = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t.GtkTreeIter),
-		true
-	);
+	iter, e = gtk_t:new("GtkTreeIter", true);
 	if not iter then return self:warn{me, "GtkTreeIter init", e} end;
 	-- initialize GValue's
 	local gint = g.value.new(gtk.G_TYPE_INT);
@@ -227,10 +209,7 @@ function Guuc:load_tree(list)
 	if not sql then
 		return nil, "load_tree(): " .. tostring(e);
 	end;
-	local iter = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t.GtkTreeIter),
-		true
-	);
+	local iter = gtk_t:new("GtkTreeIter", true);
 	local seen = {}; -- appended IDs
 	-- {{{ loop(par_id, par_path, unfold) -- loop through URIs
 	-- par_id	- ID of theparent node
@@ -254,11 +233,7 @@ function Guuc:load_tree(list)
 			-- {{{ find the parent's iter
 			local par_iter = dlffi.NULL;
 			if par_path and (par_path ~= dlffi.NULL) then
-				par_iter = dlffi.dlffi_Pointer(
-					dlffi.sizeof(gtk_t.GtkTreeIter),
-					true
-				);
-				_bzero(par_iter, dlffi.sizeof(gtk_t.GtkTreeIter));
+				par_iter = gtk_t:new("GtkTreeIter", true);
 				local r = model:get_iter(par_iter, par_path);
 				if r ~= 1 then
 					return nil, string.format(
@@ -401,10 +376,7 @@ function Guuc:init_tree()
 		-- {{{ unfold children as well
 		if unfold then
 			-- initialize iterator
-			local child = dlffi.dlffi_Pointer(
-				dlffi.sizeof(gtk_t.GtkTreeIter),
-				true
-			);
+			local child = gtk_t:new("GtkTreeIter", true);
 			-- iterate through children
 			if model:iter_children(child, iter) == 1 then repeat
 				-- check the `unfold`
@@ -512,10 +484,7 @@ function Guuc:init_tree()
 	--	check, if ID is specified in the saved item and
 	--	write new parent if possible
 	local function chk_reg()
-		local iter = dlffi.dlffi_Pointer(
-			dlffi.sizeof(gtk_t["GtkTreeIter"]),
-			true
-		);
+		local iter = gtk_t:new("GtkTreeIter", true);
 		-- {{{ get_id(...) -- find ID of the item
 		--	path - GtkTreePath to the item
 		local function get_id(path)
@@ -613,10 +582,7 @@ function Guuc:item_new(id, name, parent, unfold, file)
 	if not list then return self:warn{me, "self.list undefined"} end;
 	local model = list:get_model();
 	if not model then return self:warn{me, "model undefined"} end;
-	local iter = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t.GtkTreeIter),
-		true
-	);
+	local iter = gtk_t:new("GtkTreeIter", true);
 	if not iter then return self:warn{me, "GtkTreeIter init failure"} end;
 	if not parent then parent = dlffi.NULL end;
 	local listen = self["write_parent"];
@@ -640,22 +606,21 @@ function Guuc:item_new(id, name, parent, unfold, file)
 	local err, pixbuf;
 	if not file then file = self["pix_none"] end;
 	if file then
-		err = dlffi.dlffi_Pointer();
 		file = tostring(file);
 		if file:find("[.~]*[/]") ~= 1 then
 			-- relative to PIXDIR path given
 			file = string.format("%s/%s", self.pixdir, file);
 		end;
-		pixbuf = gdk.pixbuf_new_from_file_at_size(
+		_, pixbuf, err = gdk.l_pixbuf_new_from_file_at_size(
 			tostring(file),
 			self.pix[1], self.pix[2],
-			dlffi.dlffi_Pointer(err)
+			dlffi.NULL
 		);
 	end;
 	model:set_value(iter, 0, gval_id);
 	model:set_value(iter, 1, gval_name);
 	model:set_value(iter, 2, gval_unfold);
-	if err == dlffi.dlffi_Pointer() then
+	if err == dlffi.NULL then
 		g.value_take_object(gval_pix, pixbuf);
 		model:set_value(iter, 3, gval_pix);
 	else
@@ -668,10 +633,7 @@ end;
 -- {{{ Guuc:get_selected(GtkTreeView) -- return the selected iterator
 function Guuc:get_selected(list)
 	local sel = list:get_selection();
-	local iter = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t.GtkTreeIter),
-		true
-	);
+	local iter = gtk_t:new("GtkTreeIter", true);
 	local r = sel:get_selected(dlffi.NULL, iter);
 	if not r then return nil end;
 	if r == 0 then return nil end;
@@ -689,16 +651,13 @@ function Guuc:get_active_uri(sel)
 		sel = self.list:get_selection();
 		if not sel then return self:warn{me, "get_selection()"} end;
 	end;
-	local iter = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t.GtkTreeIter),
-		true
-	);
+	local iter = gtk_t:new("GtkTreeIter", true);
 	-- GtkTreeModel, GtkTreeIter
-	local model = dlffi.dlffi_Pointer();
+	local model;
 	local r;
-	r, e = sel:get_selected(dlffi.dlffi_Pointer(model), iter);
+	_, r, model = sel:l_get_selected(dlffi.NULL, iter);
 	if (not r) or (r == 0) then
-		return self:warn{me, "get_selected()", r, e};
+		return self:warn{me, "get_selected()", r};
 	end;
 	model, e = gtk_t(model);
 	if not model then
@@ -833,10 +792,7 @@ local function read_combo(obj)
 	if not model then
 		return nil, "get_model(): " .. tostring(e);
 	end;
-	local iter = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t["GtkTreeIter"]),
-		true
-	);
+	local iter = gtk_t:new("GtkTreeIter", true);
 	local r = obj:get_active_iter(iter);
 	if not r then return nil, "get_active_iter()" end;
 	if r == 0 then
@@ -872,16 +828,10 @@ function read_textview(widget, builder)
 	if not widget then
 		return nil, "get_buffer(): " .. tostring(e);
 	end;
-	local ibeg = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t["GtkTextIter"]),
-		true
-	);
+	local ibeg = gtk_t:new("GtkTextIter", true);
 	if not ibeg then return nil, "iter_begin" end;
-	local iend = dlffi.dlffi_Pointer(
-		dlffi.sizeof(gtk_t["GtkTextIter"]),
-		true
-	);
-	if not ibeg then return nil, "iter_end" end;
+	local iend = gtk_t:new("GtkTextIter", true);
+	if not iend then return nil, "iter_end" end;
 	_, e = widget:get_bounds(ibeg, iend);
 	if e then return nil, "get_bounds(): " .. tostring(e) end;
 	return dlffi.dlffi_Pointer(
@@ -962,10 +912,7 @@ function Guuc:select_group(id, uri)
 	local iter;
 	if id then
 		-- {{{ iterate through list
-		iter = dlffi.dlffi_Pointer(
-			dlffi.sizeof(gtk_t.GtkTreeIter),
-			true
-		);
+		iter = gtk_t:new("GtkTreeIter", true);
 		local r = model:get_iter_first(iter);
 		if r ~= 1 then
 			-- empty list
@@ -1029,14 +976,8 @@ local function get_widget_value(widget)
 		if not widget then
 			return self:warn{me, "get_buffer()", e};
 		end;
-		local ibeg = dlffi.dlffi_Pointer(
-			dlffi.sizeof(gtk_t["GtkTextIter"]),
-			true
-		);
-		local iend = dlffi.dlffi_Pointer(
-			dlffi.sizeof(gtk_t["GtkTextIter"]),
-			true
-		);
+		local ibeg = gtk_t:new("GtkTextIter", true);
+		local iend = gtk_t:new("GtkTextIter", true);
 		_, e = widget:get_bounds(ibeg, iend);
 		if e then return self:warn{me, "get_bounds()", e} end;
 		widget = widget:get_text(ibeg, iend, true);
@@ -1046,10 +987,7 @@ local function get_widget_value(widget)
 	-- }}} GtkTextView
 	-- {{{ GtkComboBox
 	if widget.get_model and widget.get_active_iter then
-		local iter = dlffi.dlffi_Pointer(
-			dlffi.sizeof(gtk_t["GtkTreeIter"]),
-			true
-		);
+		local iter = gtk_t:new("GtkTreeIter", true);
 		e = widget:get_active_iter(iter);
 		if e ~= 1 then
 			-- new item selected
@@ -1072,8 +1010,8 @@ function Guuc:make_list(rec, data)
 	-- {{{ compose array of column types
 	local str = self.gtk_t["ListStore"];
 	local cols;
-	cols, e = dlffi.dlffi_Pointer(dlffi.sizeof(str), true);
-	if not cols then return self:warn{me, "dlffi_Pointer()", e} end;
+	cols, e = gtk_t:new(str, true)
+	if not cols then return self:warn{me, "gtk_t:new()", e} end;
 	e = dlffi.type_element(cols, str, 1, gtk.G_TYPE_INT);
 	if not e then return self:warn{me, "1st column"} end;
 	e = dlffi.type_element(cols, str, 2, gtk.G_TYPE_STRING);
@@ -1300,10 +1238,7 @@ function Guuc:Url_toolUrl_Open(btn, ud)
 	if (not str) or (not str["argv"]) then
 		return self:err{me, "Dlffi_t:new()", e};
 	end;
-	local argv = dlffi.dlffi_Pointer(
-		dlffi.sizeof(str["argv"]),
-		true
-	);
+	local argv = str:new("argv", true);
 	if not argv then return self:err{me, "malloc()"} end;
 	-- set argv[0]
 	dlffi.type_element(argv, str["argv"], 1, self.exec);

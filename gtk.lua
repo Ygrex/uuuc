@@ -76,25 +76,25 @@ end;
 -- {{{ GTK+ typedef
 local typedef, e = dlffi.Dlffi_t:new();
 assert(typedef, e);
-rawset(typedef, "gboolean"		, dlffi.ffi_type_sint);
-rawset(typedef, "gint"			, dlffi.ffi_type_sint);
-rawset(typedef, "gint8"			, dlffi.ffi_type_sint8);
-rawset(typedef, "guint"			, dlffi.ffi_type_uint);
-rawset(typedef, "guint32"		, dlffi.ffi_type_uint32);
-rawset(typedef, "guint64"		, dlffi.ffi_type_uint64);
-rawset(typedef, "gulong"		, dlffi.ffi_type_ulong);
-rawset(typedef, "gdouble"		, dlffi.ffi_type_double);
-rawset(typedef, "GQuark"		, dlffi.ffi_type_uint32);
-rawset(typedef, "GType"			, dlffi.ffi_type_size_t);
-rawset(typedef, "GdkEventType"		, dlffi.ffi_type_sint);
-rawset(typedef, "GConnectFlags"		, dlffi.ffi_type_sint);
-rawset(typedef, "GtkAttachOptions"	, dlffi.ffi_type_sint);
-rawset(typedef, "GtkDialogFlags"	, dlffi.ffi_type_sint);
-rawset(typedef, "GtkFileChooserAction"	, dlffi.ffi_type_sint);
-rawset(typedef, "GtkResponseType"	, dlffi.ffi_type_sint);
-rawset(typedef, "GtkSelectionMode"	, dlffi.ffi_type_sint);
-rawset(typedef, "GtkWrapMode"		, dlffi.ffi_type_sint);
-rawset(typedef, "GSpawnFlags"		, dlffi.ffi_type_sint);
+typedef["gboolean"]		= dlffi.ffi_type_sint;
+typedef["gint"]			= dlffi.ffi_type_sint;
+typedef["gint8"]		= dlffi.ffi_type_sint8;
+typedef["guint"]		= dlffi.ffi_type_uint;
+typedef["guint32"]		= dlffi.ffi_type_uint32;
+typedef["guint64"]		= dlffi.ffi_type_uint64;
+typedef["gulong"]		= dlffi.ffi_type_ulong;
+typedef["gdouble"]		= dlffi.ffi_type_double;
+typedef["GQuark"]		= dlffi.ffi_type_uint32;
+typedef["GType"]		= dlffi.ffi_type_size_t;
+typedef["GdkEventType"]		= dlffi.ffi_type_sint;
+typedef["GConnectFlags"]	= dlffi.ffi_type_sint;
+typedef["GtkAttachOptions"]	= dlffi.ffi_type_sint;
+typedef["GtkDialogFlags"]	= dlffi.ffi_type_sint;
+typedef["GtkFileChooserAction"]	= dlffi.ffi_type_sint;
+typedef["GtkResponseType"]	= dlffi.ffi_type_sint;
+typedef["GtkSelectionMode"]	= dlffi.ffi_type_sint;
+typedef["GtkWrapMode"]		= dlffi.ffi_type_sint;
+typedef["GSpawnFlags"]		= dlffi.ffi_type_sint;
 typedef["GError"] = { typedef.GQuark, typedef.guint, dlffi.ffi_type_pointer };
 assert(typedef["GError"]);
 typedef["GdkEventButton"] = {
@@ -142,44 +142,6 @@ typedef["GValue"] = {
 	typedef.guint64,
 };
 assert(typedef["GValue"]);
--- {{{ unwrap() - read value from pointer
---	p - pointer (userdata)
---	t - FFI type of value or string
---	if t of FFI type:
---		reads from pointer sizeof() bytes and return them as value
---	if t is a string:
---		find class of the GObject instance and return a proxy
-local unwrap = function(p, t)
-	local tp = type(t);
-	if tp == "string" then
-		return dlffi.Dlffi:new(
-			find_inherit(t),
-			p
-		);
-	elseif tp == "userdata" then
-		local str, e = dlffi.Dlffi_t:new("str", { t });
-		if not str then return nil, e end;
-		return dlffi.type_element(p, str["str"], 1);
-	else
-		return nil, "object type cannot be recognized";
-	end;
-end;
--- }}} unwrap()
-rawset(typedef, "unwrap", unwrap);
--- {{{ wrap() - create pointer to the copy of typed value
-local wrap = function(v, t)
-	if type(t) ~= "userdata" then
-		return nil, "object type cannot be recognized";
-	end;
-	local str, e = dlffi.Dlffi_t:new("str", {t});
-	if not str then return nil, "FFI structure init: " .. tostring(e) end;
-	local buf, e = dlffi.dlffi_Pointer(dlffi.sizeof(str["str"]), true);
-	if not buf then return nil, "Pointer init: " .. tostring(e) end;
-	dlffi.type_element(buf, str["str"], 1, v);
-	return buf;
-end;
--- }}} wrap()
-rawset(typedef, "wrap", wrap);
 -- }}} GTK+ typedef
 
 -- {{{ library header
@@ -501,7 +463,7 @@ local _gtk = {
 	},
 	{
 		"get_selected",
-		typedef.gboolean,
+		{ ["ret"] = typedef.gboolean, 2 },
 		{
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
@@ -1268,7 +1230,7 @@ local _gtk = {
 	},
 	{
 		"pixbuf_new_from_file_at_size",
-		dlffi.ffi_type_pointer,
+		{ ret = dlffi.ffi_type_pointer, 4 },
 		{
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_sint,
@@ -1355,6 +1317,12 @@ end;
 -- }}} get_object
 
 -- {{{ load_libs() -- load GTK+-2.0 symbols defined in header
+-- {{{ wrap_get_object()
+local wrap_get_object = function(cfunc, gen)
+	return function(...) return get_object(cfunc(...), gen) end;
+end;
+-- }}} wrap_get_object()
+
 local function load_libs()
 	-- iterate through header libraries
 	for i = 1, #_gtk, 1 do
@@ -1367,10 +1335,10 @@ local function load_libs()
 			local name = symbol[1];
 			symbol[1] = prefix .. "_" .. name;
 			-- iterate through pkg-config's libraries
-			local r, e;
+			local r, rr;
 			for k = 1, #libs, 1 do
 				-- try to load symbol from the .SO file
-				r, e = dlffi.load(
+				r, rr = dlffi.load(
 					libs[k],
 					unpack(symbol)
 				);
@@ -1382,18 +1350,26 @@ local function load_libs()
 				-- the method constructs new object
 				-- create constructor
 				local cfunc = r;
-				local wrapper = function(...)
-					return get_object(cfunc(...), k);
+				r = wrap_get_object(cfunc, k);
+				if rr then
+					local ccfunc = rr;
+					rr = wrap_get_object(ccfunc, k);
 				end;
-				-- substitue the symbol with proxy
-				r = wrapper;
 			end;
 			-- put the loaded symbol to the header
 			_gtk[symbol[1]] = r;
 			-- restore symbol name
 			symbol[1] = name;
 			-- put the loaded symbol to appropriate header part
-			lib[name] = r;
+			if rr then
+				-- store single-return function with original
+				-- name and it's multi-return counterpart
+				-- prefixed with "l_"
+				lib[name] = rr;
+				lib["l_" .. name] = r;
+			else
+				lib[name] = r;
+			end;
 			-- split prefix by underscores and store the symbol
 			-- to headers of parent namespaces
 			local cur = 1;
@@ -1404,7 +1380,13 @@ local function load_libs()
 				local head = find_header(pref);
 				if head then
 					local tail = prefix:sub(e + 1);
-					head[tail .. "_" .. name] = r;
+					if rr then
+						local tail = tail .. "_" .. name;
+						head[tail] = rr;
+						head["l_" .. tail] = r;
+					else
+						head[tail .. "_" .. name] = r;
+					end;
 				end;
 			until false;
 		end;
@@ -1426,17 +1408,6 @@ local function rtdl_now()
 	end;
 end;
 -- }}} rtdl_now()
-
--- {{{ gtk.GError(err) -- return error mesage and free GError
---	err - pointer to a GError structure
-function gtk.GError(err)
-	local s = dlffi.type_element(err, typedef["GError"], 3);
-	if not s then return nil, "dlffi.type_element() failed" end;
-	s = dlffi.dlffi_Pointer(s):tostring();
-	_gtk.g_error_free(err);
-	return s;
-end;
--- }}} gtk.GError()
 
 -- {{{ Builder - overrides GtkBuilder
 local Builder = { _type = "object" };
@@ -1474,7 +1445,8 @@ g_value.new = function(gtype)
 	local size = dlffi.sizeof(typedef.GValue);
 	local e;
 	if gtype == false then e = false else e = true end;
-	local val, e = dlffi.dlffi_Pointer(size, e);
+	local val;
+	val, e = typedef:new("GValue", e);
 	if not val then
 		return nil, "Pointer init failure: " .. tostring(e);
 	end;
