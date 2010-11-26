@@ -64,7 +64,7 @@ function Guuc:new(sql)
 	if type(PIX) ~= "table" then
 		pix = {32, 32};
 	else
-		pix = {PIX[0], PIX[1]};
+		pix = {PIX[1], PIX[2]};
 		for i = 1, #pix, 1 do
 			pix[i] = tonumber(pix[i]);
 			if not pix[i] then pix[i] = 32 end;
