@@ -328,7 +328,7 @@ function Guuc:init_tree()
 		local me = "unfold_handler()";
 		if unfold == dlffi.NULL then unfold = false
 		else unfold = true end;
-		local model = model();
+		local model = gtk_t(tree):get_model();
 		-- {{{ get the item ID
 		local id, e;
 		id, e = g.value.new();
@@ -405,7 +405,7 @@ function Guuc:init_tree()
 		-- }}} unfold children as well
 		return true;
 	end;
-	self.cl["unfold_handler"] = dlffi.load(
+	unfold_handler = dlffi.load(
 		unfold_handler,
 		dlffi.ffi_type_void,
 		{
@@ -415,15 +415,15 @@ function Guuc:init_tree()
 			dlffi.ffi_type_pointer,
 		}
 	);
-	-- prevent local function from being GC'ed
 	list:connect("row-collapsed",
-		self.cl["unfold_handler"],
+		unfold_handler,
 		dlffi.NULL
 	);
 	list:connect("row-expanded",
-		self.cl["unfold_handler"],
-		self.cl["unfold_handler"]
+		unfold_handler,
+		self.list
 	);
+	self.cl["Url_treeUrl:row-collapsed"] = unfold_handler;
 	-- }}} expand/collapse listeners
 	-- {{{ selection listener
 	local sel = list:get_selection();
