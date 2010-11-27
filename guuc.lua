@@ -329,21 +329,9 @@ function Guuc:init_tree()
 		if unfold == dlffi.NULL then unfold = false
 		else unfold = true end;
 		local model = gtk_t(tree):get_model();
-		-- {{{ get the item ID
-		local id, e;
-		id, e = g.value.new();
-		if not id then
-			return self:err{me, "GValue init failure", e};
-		end;
-		_, e = model:get_value(iter, 0, id);
-		if e then
-			return self:err{me, "gtk_tree_model_get_value()", e};
-		end;
-		id, e = g.value_get_int(id);
-		if not id then
-			return self:err{me, "g_value_get_int()", e};
-		end;
-		-- }}} get the item ID
+		-- get the item ID
+		local _, _, id = model:l_get_value(iter, 0, dlffi.NULL);
+		id = g.value_get_int(id);
 		-- {{{ write to the DB
 		local sql, e = self.sql:new(self.sql.filename);
 		if not sql then return self:err{me, "ODBC init", e} end;
@@ -353,9 +341,6 @@ function Guuc:init_tree()
 		-- {{{ mark in the tree
 		local value;
 		value, e = g.value.new(gtk.G_TYPE_INT);
-		if not value then
-			return self:err{me, "GValue(value) failure", e};
-		end;
 		if unfold then
 			_, e = g.value_set_int(value, 1);
 		else
@@ -374,6 +359,7 @@ function Guuc:init_tree()
 		end;
 		-- }}} mark in the tree
 		-- {{{ unfold children as well
+		-- FIXME should be a separate function
 		if unfold then
 			-- initialize iterator
 			local child = gtk_t:new("GtkTreeIter", true);
@@ -383,10 +369,8 @@ function Guuc:init_tree()
 				-- get the child's path for expanding
 				local path = model:get_path(child);
 				if not path then break end;
-				local unfold = g.value.new();
-				if not unfold then break end;
-				local _, e = model:get_value(child, 2, unfold);
-				if e then break end;
+				local _, _, unfold =
+					model:l_get_value(child, 2, dlffi.NULL);
 				unfold = g.value_get_int(unfold);
 				if not unfold then break; end;
 				if unfold == 1 then

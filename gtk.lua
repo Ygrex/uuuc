@@ -593,12 +593,12 @@ local _gtk = {
 	},
 	{
 		"get_value",
-		dlffi.ffi_type_void,
+		{ ret = dlffi.ffi_type_void, 4 },
 		{
 			dlffi.ffi_type_pointer,
 			dlffi.ffi_type_pointer,
 			typedef.gint,
-			dlffi.ffi_type_pointer,
+			typedef["GValue"],
 		},
 	},
 	{
