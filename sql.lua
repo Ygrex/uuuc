@@ -687,16 +687,24 @@ function Sqlite3:unfold_uri(id, unfold)
 end;
 -- }}} Sqlite3:unfold_uri
 
+-- {{{ Sqlite3:escape(...) - protect string
+--	string - string to protect
+function Sqlite3:escape(string)
+	return string.gsub(tostring(string), "'", "''");
+end;
+-- }}} Sqlite3:escape()
+
 -- {{{ Sqlite3:write_value(...) - write value for the URI's property
 --	uri	- URI ID
 --	prop	- prop ID
 --	val	- value
 function Sqlite3:write_value(uri, prop, val)
+	val = self:escape(val);
 	-- try to update
 	local que = string.format(
 		[[UPDATE `%s` SET `value` = '%s' ]] ..
 		[[WHERE `prop` = %d AND `url` = %d]],
-		self.tbl.val, tostring(val),
+		self.tbl.val, val,
 		prop, uri
 	);
 	local r, e = self:query(que);
@@ -743,7 +751,7 @@ function Sqlite3:write_uri(id, uri, misc, group)
 			[[`group` = %s ]] ..
 		[[WHERE `id` = %d]],
 		self.tbl.url,
-		tostring(uri), -- path (FIXME dummy)
+		self:escape(uri), -- path (FIXME dummy)
 		tostring(misc),
 		group,
 		id -- WHERE

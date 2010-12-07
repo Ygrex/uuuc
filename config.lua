@@ -32,7 +32,7 @@ GLADE_FILE = "uuuc.glade";
 -- width x height of pics
 -- aspect ratio will be preserved
 -- set {-1, -1} for original size
-PIX = {32, 32};
+PIX = {48, 48};
 -- directory with icons
 PIXDIR = "./pics";
 -- default icon
