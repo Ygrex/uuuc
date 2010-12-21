@@ -685,7 +685,8 @@ function Guuc:init_pop()
 				};
 			end;
 			-- get the parent's ID
-			id = model:get_value(sel, 0);
+			_, _, id = model:l_get_value(sel, 0, dlffi.NULL);
+			id = g.value_get_int(id);
 			-- iterator will become invalid after item appending,
 			-- store it's path instead
 			path = model:get_path(sel);
